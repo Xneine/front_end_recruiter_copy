@@ -10,6 +10,7 @@ from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
 from langchain.prompts import PromptTemplate
+# from langchain_core.prompts import ChatPromptTemplate
 from langchain.chains import RetrievalQA
 import pandas as pd
 from langchain_core.documents import Document
@@ -55,7 +56,7 @@ def get_data_from_mysql():
                     e.education_institute,
                     e.company_history,
                     e.position_history
-                FROM employee2 e JOIN department d ON e.department = d.id JOIN position p ON p.id = e.position
+                FROM employee e JOIN department d ON e.department = d.id JOIN position p ON p.id = e.position
             """
             cursor.execute(query)
             results = cursor.fetchall()
@@ -125,7 +126,7 @@ except Exception as e:
 llm = ChatGroq(
     model_name='deepseek-r1-distill-llama-70b',
     api_key="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",
-    temperature=0.7,
+    temperature=0.5,
 )
 
 # date_now = datetime.now().date()
@@ -246,7 +247,7 @@ def get_array_employee(data):
                         e.education_institute,
                         e.company_history,
                         e.position_history
-                    FROM employee2 e 
+                    FROM employee e 
                     JOIN department d ON e.department = d.id 
                     JOIN position p ON p.id = e.position
                     WHERE e.id = %s
@@ -308,19 +309,44 @@ def search_candidates():
         print(user_query)
         current_date = datetime.now().strftime("%d %B %Y")
         case_information = f"{user_query} (Untuk Sekedar Informasi, Tanggal saat ini adalah {current_date})"
-        result = qa_chain.invoke({"query": case_information})
-        # result = qa_chain.invoke({
-        #     "date_now": datetime.now().strftime("%Y-%m-%d"),
-        #     "query": user_query
-        # })
-        # parsed_candidates = regex_list(result["result"])
-        # print(result['result'])
         
+        # START OF SECOND LLM
+        
+        topic = '''
+        Anda adalah ahli prompting, Tugas Anda Adalah Menparafrase suatu prompt menjadi prompt yang lebih Baik dan jelas, Disini tugasmu hanya memperbaiki kalimatnya Bukan membuat kalimat baru dengan makna yang berbeda.
+        Langsung berikan jawaban tanpa ada awalan atau kesimpulan di akhir.
+        '''
+        llm2 = ChatGroq(
+            model='llama-3.3-70b-versatile',
+            api_key="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",
+            temperature=0.3
+        )
+
+        prompt_template = f'''
+        {topic} Berikut adalah prompt yang harus kamu prompt ulang: {case_information}
+        '''
+        
+        prompt = PromptTemplate.from_template(
+            template=prompt_template
+        )
+            
+        # Create and run the chain
+        chain = prompt | llm2
+            
+        # Get the response
+        response2 = chain.invoke({"text": topic})
+        
+        print(response2.content)
+        # END OF SECOND LLM
+        # START OF THIRD LLM
+        topic = '''
+        Anda adalah seorang ahli yang dapat membuat pertanyaan yang terkait berdasarkan pertanyaan sebelumnya, Tugas Anda Adalah Memberikan 3 pertanyaan terkait berdasarkan pertanyaan sebelumnya.
+        Langsung berikan jawaban tanpa ada awalan atau kesimpulan di akhir.
+        '''
+        # END OF THIRD LLM
+        result = qa_chain.invoke({"query": response2.content})
         think_text, candidates = regex_think_and_candidates(result["result"])
         print(think_text)
-        # print(candidates)
-        # candidates_array = get_array_employee(candidates)
-        # print(candidates_array)
         candidates_array = get_array_employee(candidates)
         print(candidates_array)
         # Flatten array of arrays
