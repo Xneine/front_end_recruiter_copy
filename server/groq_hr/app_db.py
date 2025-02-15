@@ -125,9 +125,15 @@ except Exception as e:
 # 4. Setup Model LLM (tetap sama)
 llm = ChatGroq(
     model_name='deepseek-r1-distill-llama-70b',
-    api_key="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",
+    api_key="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",
     temperature=0.5,
 )
+llm2 = ChatGroq(
+    model='llama-3.3-70b-versatile',
+    api_key="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",
+    temperature=0.3
+)
+
 
 # date_now = datetime.now().date()
 
@@ -146,9 +152,27 @@ Perhatikan dan Pahami konteks Pertanyaannya dengan benar, Apabila jumlah yang re
 1. ID: [id]
    Alasan: [Berikan Alasannya secara lengkap dan terperinci mengapa orang tersebut dipilih sebagai kandidat]
 """
+template2 = """
+**Instruksi:**
+Anda adalah seorang rekomender system pertanyaan yang dapat membuat pertanyaan yang mirip pertanyaan sebelumnya, Berikan saya 3 pertanyaan serupa berdasarkan pertanyaan berikut:
+**Pertanyaan:**
+{question}
 
+Pastikan pertanyaan yang dihasilkan tetap dalam konteks pencarian kandidat, namun dengan variasi pada jabatan, departemen, atau kriteria lainnya seperti tingkat pengalaman atau latar belakang pendidikan abaikan Date.
+{context}
+
+**note:**
+Jawaban yang anda keluarnya hanya dalam bentuk array yang berisi 3 pertanyaan terkait
+
+**Format jawaban:**
+["pertanyaan1", "pertanyaan2", "pertanyaan3"]
+"""
 prompt = PromptTemplate(
     template=template,
+    input_variables=["context", "question"]
+)
+prompt2 = PromptTemplate(
+    template=template2,
     input_variables=["context", "question"]
 )
 
@@ -159,6 +183,13 @@ qa_chain = RetrievalQA.from_chain_type(
     chain_type="stuff",
     retriever=retriever,
     chain_type_kwargs={"prompt": prompt},
+    return_source_documents=True
+)
+qa_chain2 = RetrievalQA.from_chain_type(
+    llm=llm2,
+    chain_type="stuff",
+    retriever=retriever,
+    chain_type_kwargs={"prompt": prompt2},
     return_source_documents=True
 )
 
@@ -296,6 +327,19 @@ def regex_think_and_candidates(result_text):
     
     return think_text, candidate_list
 
+def regex_sugestion(data):
+    # Jika data adalah string, coba parse sebagai JSON
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except json.JSONDecodeError:
+            return []  # Jika parsing gagal, kembalikan list kosong
+    # Pastikan data sekarang adalah list
+    if not isinstance(data, list):
+        return []
+    # Lakukan trim pada setiap elemen yang merupakan string
+    return [s.strip() for s in data if isinstance(s, str)]
+
 
 # Endpoint API (tetap sama)
 @app.route('/search', methods=['POST'])
@@ -311,17 +355,15 @@ def search_candidates():
         case_information = f"{user_query} (Untuk Sekedar Informasi, Tanggal saat ini adalah {current_date})"
         
         # START OF SECOND LLM
-        
-        topic = '''
-        Anda adalah ahli prompting, Tugas Anda Adalah Menparafrase suatu prompt menjadi prompt yang lebih Baik dan jelas, Disini tugasmu hanya memperbaiki kalimatnya Bukan membuat kalimat baru dengan makna yang berbeda.
-        Langsung berikan jawaban tanpa ada awalan atau kesimpulan di akhir.
-        '''
-        llm2 = ChatGroq(
+        llm3 = ChatGroq(
             model='llama-3.3-70b-versatile',
-            api_key="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",
+            api_key="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",
             temperature=0.3
         )
-
+        topic = '''
+        Anda adalah ahli prompting, Tugas Anda Adalah Menparafrase suatu prompt menjadi prompt yang lebih Baik dan jelas, Ubah menjadi kalimat perintah. Disini tugasmu hanya memperbaiki kalimatnya Bukan membuat kalimat baru dengan makna yang berbeda.
+        Langsung berikan jawaban tanpa ada awalan atau kesimpulan di akhir.
+        '''
         prompt_template = f'''
         {topic} Berikut adalah prompt yang harus kamu prompt ulang: {case_information}
         '''
@@ -331,18 +373,16 @@ def search_candidates():
         )
             
         # Create and run the chain
-        chain = prompt | llm2
+        chain = prompt | llm3
             
         # Get the response
         response2 = chain.invoke({"text": topic})
         
-        print(response2.content)
+        print("INI LLM2", response2.content)
         # END OF SECOND LLM
         # START OF THIRD LLM
-        topic = '''
-        Anda adalah seorang ahli yang dapat membuat pertanyaan yang terkait berdasarkan pertanyaan sebelumnya, Tugas Anda Adalah Memberikan 3 pertanyaan terkait berdasarkan pertanyaan sebelumnya.
-        Langsung berikan jawaban tanpa ada awalan atau kesimpulan di akhir.
-        '''
+        response3 = qa_chain2.invoke({"query": response2.content})
+        print("INI LLM 3: ",response3["result"])
         # END OF THIRD LLM
         result = qa_chain.invoke({"query": response2.content})
         think_text, candidates = regex_think_and_candidates(result["result"])
@@ -356,6 +396,7 @@ def search_candidates():
         
         print(flattened_candidates)
         response = {
+            "suggestion" : regex_sugestion(response3["result"]),
             "think": think_text,  # Digunakan pada chat untuk animasi
             "answer": flattened_candidates,  # Digunakan pada card
             "sources": [
@@ -367,6 +408,11 @@ def search_candidates():
         }
         print(response['answer'])
         print(jsonify(response))
+        if isinstance(regex_sugestion(response3["result"]), list):
+           print("benar array", regex_sugestion(response3["result"]))
+        else:
+            print("bukan array")
+        print("Ini response raw: ",result["result"])
         return jsonify(response)
     
     except Exception as e:

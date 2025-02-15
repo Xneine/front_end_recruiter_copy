@@ -40,6 +40,7 @@ export function Chat() {
   ]);
   const [inputValue, setInputValue] = useState("");
   const [cards, setCards] = useState<Candidate[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -112,15 +113,16 @@ export function Chat() {
     }
   }, [messages]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputValue.trim()) return;
+  // Fungsi untuk mengirim query ke back-end
+  const sendQuery = async (query: string) => {
+    // Hapus suggestion sebelumnya saat ada proses thinking
+    setSuggestions([]);
 
     // Tambah pesan user
     const userMessage: ChatMessage = {
       id: Date.now(),
       role: "user",
-      content: inputValue.trim(),
+      content: query,
     };
     setMessages((prev) => [...prev, userMessage]);
 
@@ -138,24 +140,26 @@ export function Chat() {
       const response = await fetch("http://127.0.0.1:5025/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: inputValue }),
+        body: JSON.stringify({ query }),
       });
       const data = await response.json();
 
-      // Ambil nilai 'think' (untuk animasi) dan 'answer' (untuk card)
+      // Ambil nilai 'think', 'answer', dan 'suggestion'
       const thinkingText = data.think || "";
       const candidates: Candidate[] = data.answer || [];
-      // console.log(data.answer)
-      console.log(candidates)
+      const suggestionsData: string[] = data.suggestion || [];
 
-      // Hapus tag <think> dan </think> dari teks (jika ada)
+      // Update state suggestions (akan tampil setelah pesan "Found n candidate(s)" muncul)
+      setSuggestions(suggestionsData);
+      console.log("Candidates:", candidates);
+
+      // Bersihkan teks thinking (jika ada tag <think>)
       const cleanThinkingText = thinkingText.replace(/<\/?think>/gi, "").trim();
 
-      // Hapus pesan temporary "Thinking..."
+      // Hapus pesan temporary "Thinking..." dan tambahkan pesan assistant baru
       setMessages((prev) => {
         const filtered = prev.filter((m) => !m.isTyping);
         if (cleanThinkingText) {
-          // Tambahkan pesan assistant yang akan dianimasikan
           return [
             ...filtered,
             {
@@ -167,7 +171,6 @@ export function Chat() {
             },
           ];
         } else {
-          // Jika tidak ada animasi, langsung tampilkan pesan statis
           return [
             ...filtered,
             {
@@ -193,8 +196,32 @@ export function Chat() {
         ];
       });
     }
+  };
+
+  // Handler untuk submit form (inputValue)
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputValue.trim()) return;
+    await sendQuery(inputValue.trim());
     setInputValue("");
   };
+
+  // Handler untuk klik suggestion
+  const handleSuggestionClick = async (suggestion: string) => {
+    await sendQuery(suggestion);
+  };
+
+  // Cek apakah ada pesan temporary (proses thinking/animasi)
+  const isThinking = messages.some((msg) => msg.isTyping);
+
+  // Ambil pesan assistant terakhir yang sudah final (tidak temporary dan tidak sedang thinking)
+  const lastAssistantMessage = messages
+    .filter((m) => m.role === "assistant" && !m.isTyping)
+    .slice(-1)[0];
+
+  // Tampilkan suggestion hanya jika pesan terakhir adalah "Found n candidate(s)"
+  const showSuggestions =
+    lastAssistantMessage?.content?.startsWith("Found") && suggestions.length > 0;
 
   return (
     <div className="flex h-full">
@@ -252,6 +279,28 @@ export function Chat() {
                 </div>
               );
             })}
+
+          {/* Bagian suggestion hanya muncul jika pesan terakhir sudah "Found n candidate(s)" */}
+          {showSuggestions && (
+            <div className="mt-4">
+              <div className="text-sm font-semibold mb-2">Suggestions:</div>
+              <div className="flex flex-col gap-2">
+                {suggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    className="w-full bg-slate-300 text-blue-500 text-left px-3 py-2 border border-blue-500 rounded hover:bg-blue-100"
+                    onClick={() => handleSuggestionClick(s)}
+                  >
+                    <div className="flex font-medium">
+                    <img src="/assets/deepseek-color.svg" alt="" className="mr-3"/>
+                    {s}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div ref={messagesEndRef} />
         </div>
         <div className="border-t border-gray-200 p-4">

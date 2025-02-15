@@ -3,7 +3,7 @@ import { MainContent } from "../components/MainContent/MainContent";
 
 export function AdminPage() {
   return (
-    <div className="flex h-screen bg-green-50">
+    <div className="flex h-screen bg-gray-100">
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Navbar */}
