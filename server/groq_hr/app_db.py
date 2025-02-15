@@ -147,8 +147,9 @@ Anda adalah asisten pencari kandidat. Gunakan data berikut untuk menjawab:
 {question}
 **note:**
 Perhatikan dan Pahami konteks Pertanyaannya dengan benar, Apabila jumlah yang relevan tidak sesuai dengan jumlah yang diminta, Keluarkan saja sesuai dengan jumlah yang relevan.
+Tampilkan hanya jawaban finalnya sesuai dengan format jawaban.
 
-**Format jawaban:**
+**Format jawaban (format seperti dibawah ini dan tidak perlu menggunakan * pada outputnya):**
 1. ID: [id]
    Alasan: [Berikan Alasannya secara lengkap dan terperinci mengapa orang tersebut dipilih sebagai kandidat]
 """
@@ -356,13 +357,13 @@ def search_candidates():
         
         # START OF SECOND LLM
         llm3 = ChatGroq(
-            model='llama-3.3-70b-versatile',
+            model='llama-3.1-8b-instant',
             api_key="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",
-            temperature=0.3
+            temperature=0.4
         )
         topic = '''
-        Anda adalah ahli prompting, Tugas Anda Adalah Menparafrase suatu prompt menjadi prompt yang lebih Baik dan jelas, Ubah menjadi kalimat perintah. Disini tugasmu hanya memperbaiki kalimatnya Bukan membuat kalimat baru dengan makna yang berbeda.
-        Langsung berikan jawaban tanpa ada awalan atau kesimpulan di akhir.
+        Anda adalah ahli prompting, Tugas Anda Adalah Menparafrase suatu prompt menjadi prompt yang lebih Baik dan jelas, Ubah menjadi kalimat perintah cari. Disini tugasmu hanya memperbaiki kalimatnya Bukan membuat kalimat baru dengan makna yang berbeda jangan menanyakan jumlah/hitung.
+        format hanya jawaban saja
         '''
         prompt_template = f'''
         {topic} Berikut adalah prompt yang harus kamu prompt ulang: {case_information}

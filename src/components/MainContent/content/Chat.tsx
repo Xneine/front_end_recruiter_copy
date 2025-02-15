@@ -68,7 +68,8 @@ export function Chat() {
     if (!msgToAnimate) return;
 
     const timer = setInterval(() => {
-      const nextChar = msgToAnimate.finalText![msgToAnimate.typedContent!.length];
+      const nextChar =
+        msgToAnimate.finalText![msgToAnimate.typedContent!.length];
       if (!nextChar) {
         clearInterval(timer);
         return;
@@ -85,25 +86,27 @@ export function Chat() {
   }, [messages]);
 
   // Setelah animasi selesai, update pesan assistant sehingga tidak lagi menampilkan animasi
-  // dan mengganti teksnya dengan "Found n candidate(s)".
+  // dan mengganti teksnya dengan "Found n candidate(s)" serta mengupdate state kandidat.
   useEffect(() => {
-    const finishedMsg = messages.find(
+    const finishedMsgs = messages.filter(
       (m) =>
         m.role === "assistant" &&
         m.finalText &&
         m.typedContent === m.finalText &&
-        !m.content // artinya pesan ini masih berupa pesan animasi
+        !m.content // pesan ini masih berupa pesan animasi
     );
-    if (finishedMsg) {
-      // Set nilai cards dari pesan ini
-      setCards(finishedMsg.cardData || []);
-      // Update pesan dengan teks final "Found n candidate(s)"
+    if (finishedMsgs.length > 0) {
+      // Ambil pesan assistant yang paling baru
+      const latestFinishedMsg = finishedMsgs[finishedMsgs.length - 1];
+      // Update state kandidat dengan data dari pesan tersebut
+      setCards(latestFinishedMsg.cardData || []);
+      // Update pesan assistant agar teks animasi tergantikan dengan teks final
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.id === finishedMsg.id
+          msg.id === latestFinishedMsg.id
             ? {
                 ...msg,
-                content: `Found ${finishedMsg.cardData?.length || 0} candidate(s).`,
+                content: `Found ${latestFinishedMsg.cardData?.length || 0} candidate(s).`,
                 finalText: undefined,
                 typedContent: undefined,
               }
@@ -115,7 +118,8 @@ export function Chat() {
 
   // Fungsi untuk mengirim query ke back-end
   const sendQuery = async (query: string) => {
-    // Hapus suggestion sebelumnya saat ada proses thinking
+    // Bersihkan state kandidat dan suggestion sebelum memulai query baru
+    setCards([]);
     setSuggestions([]);
 
     // Tambah pesan user
@@ -149,7 +153,7 @@ export function Chat() {
       const candidates: Candidate[] = data.answer || [];
       const suggestionsData: string[] = data.suggestion || [];
 
-      // Update state suggestions (akan tampil setelah pesan "Found n candidate(s)" muncul)
+      // Update state suggestion (akan tampil setelah pesan final muncul)
       setSuggestions(suggestionsData);
       console.log("Candidates:", candidates);
 
@@ -221,7 +225,8 @@ export function Chat() {
 
   // Tampilkan suggestion hanya jika pesan terakhir adalah "Found n candidate(s)"
   const showSuggestions =
-    lastAssistantMessage?.content?.startsWith("Found") && suggestions.length > 0;
+    lastAssistantMessage?.content?.startsWith("Found") &&
+    suggestions.length > 0;
 
   return (
     <div className="flex h-full">
@@ -292,8 +297,12 @@ export function Chat() {
                     onClick={() => handleSuggestionClick(s)}
                   >
                     <div className="flex font-medium">
-                    <img src="/assets/deepseek-color.svg" alt="" className="mr-3"/>
-                    {s}
+                      <img
+                        src="/assets/deepseek-color.svg"
+                        alt=""
+                        className="mr-3"
+                      />
+                      {s}
                     </div>
                   </button>
                 ))}
