@@ -138,7 +138,7 @@ except Exception as e:
 llm = ChatGroq(
     model_name='deepseek-r1-distill-llama-70b',
     api_key="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",
-    temperature=0.5,
+    temperature=0.3,
 )
 llm2 = ChatGroq(
     model='llama-3.3-70b-versatile',
@@ -166,7 +166,7 @@ Catatan:
 - Cek ulang agar hasil sesuai dengan permintaan.
 
 Format Jawaban (Buat sesuai persis sesuai formatnya. Perhatikan huruf kapitalnya juga -> ID, Alasan):
-1. ID: [id]
+1. ID: [id karyawan pada database]
    Alasan: [Alasan pemilihan kandidat]
 
 Jika tidak ada yang cocok, Jika ada meskipun satu, tampilkan yang ada, jawab:
@@ -182,35 +182,29 @@ Anda adalah sistem rekomendasi kalimat perintah yang bertugas membuat 3 perintah
 **Kriteria untuk Perintah baru berdasarkan data berikut**:
 {context}
 - Harus tetap dalam konteks pencarian kandidat.
-- Variasi dapat berupa perubahan pada jabatan, departemen, tingkat pengalaman, atau pendidikan.
-- Jangan hanya mengubah kata-kata secara acak, tetapi buat perintah yang tetap masuk akal.
 - Jangan memasukkan informasi tanggal dalam perintah baru.
 - Format dalam kalimat perintah
-
-**Contoh sebelum dan sesudah:**
-- Input: "Cari kandidat dengan pengalaman 5 tahun di bidang IT."
-- Output: ["Cari kandidat dengan pengalaman di bidang keamanan siber.", "Cari kandidat dengan latar belakang software engineering.", "Cari kandidat yang memiliki keahlian cloud computing."]
 
 **Format Jawaban (Gunakan format JSON array, tidak perlu tambahan lain):**
 ["perintah1", "perintah2", "perintah3"]
 """
 filter_prompt_template = """
 Instruksi: 
-Anda adalah sistem ekstraksi filter divisi. Ambil divisi dari perintah pengguna.
+Anda adalah sistem ekstraksi filter divisi dan posisi. Ambil divisi dan posisi dari perintah pengguna.
 Jika tidak disebutkan, kosongkan saja. Hanya tampilkan dalam format JSON.
-Divisi yang ada = ["FAD", "FLEET", "HCCA", "OPS", "CMD"]
+Division = ["FAD", "FLEET", "HCCA", "OPS", "CMD"]
+position = ['President Director', 'Director', 'Expatriat', 'General Manager', 'Senior Manager', 'Middle Manager', 'Junior Manager', 'Team Leader', 'Senior Staff', 'Staff', 'Worker', 'Trainee', 'Non Grade']
 Contoh:
 - Input: "Cari MANAGER IT di divisi FAD"
-  Output: {"division": "FAD"}
+  Output: {"$and": [{"division": {"$eq": "FAD"}}, {"position": {"$eq": "Manager"}}]}
 
-- Input: "Tampilkan kandidat MANAGER IT di HCCA atau OPS"
-  Output: {"division": ["HCCA", "OPS"]}
+- Input: "Tampilkan kandidat staff IT di HCCA atau OPS"
+  Output: {"$and": [{"division": {"$eq": ["HCCA","OPS"]}}, {"position": {"$eq": "staff"}}]}
 
-- Input: "Cari kandidat posisi ANALYST"
+- Input: "Cari kandidat department ANALYST"
   Output: {}
-
+    
 Jawaban (Hanya JSON):
-
 Perintah:
 """
 prompt = PromptTemplate(
@@ -393,7 +387,7 @@ def search_candidates():
         # print("Filter yang diterapkan:", filters)
 
         search_kwargs = {"k": 50}
-        
+        print("Filter Dict:",filters_dict)
         if filters_dict:
             search_kwargs["filter"] = filters_dict
 
