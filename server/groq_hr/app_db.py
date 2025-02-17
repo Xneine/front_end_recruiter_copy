@@ -17,14 +17,11 @@ from langchain_core.documents import Document
 from flask_cors import CORS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-
 app = Flask(__name__)
 CORS(app,
      origins=["http://localhost:5173"],
      methods=["GET","POST","OPTIONS"],
      allow_headers=["Content-Type", "X-Requested-With", "Authorization"])
-
-
 
 # 1. Konfigurasi MySQL Database (PyMySQL)
 db_config = {
@@ -36,7 +33,7 @@ db_config = {
     'cursorclass': pymysql.cursors.DictCursor
 }
 
-# 2. *Ambil Data dari MySQL & Buat Chunk*
+# 2. Ambil Data dari MySQL & Buat Chunk dengan Metadata
 def get_data_from_mysql():
     try:
         connection = pymysql.connect(**db_config)
@@ -56,14 +53,19 @@ def get_data_from_mysql():
                     e.education_institute,
                     e.company_history,
                     e.position_history
-                FROM employee e JOIN department d ON e.department = d.id JOIN position p ON p.id = e.position
+                FROM employee e 
+                JOIN department d ON e.department = d.id 
+                JOIN position p ON p.id = e.position
             """
             cursor.execute(query)
             results = cursor.fetchall()
 
-            # *Ubah tiap baris menjadi teks panjang*
-            text_data = [
-                f"""
+            # Buat instance text splitter untuk memecah teks panjang menjadi chunk
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+            documents = []
+            for row in results:
+                # Gabungkan data tiap baris menjadi teks
+                text = f"""
                 id: {row['id']}
                 Nama: {row['full_name']}
                 NIK: {row['nik']}
@@ -77,17 +79,27 @@ def get_data_from_mysql():
                 Riwayat Pekerjaan: {row['position_history']}
                 Riwayat Perusahaan: {row['company_history']}
                 """
-                for row in results
-            ]
-
-            # *Buat chunk dari teks panjang*
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-            documents = [
-                Document(page_content=chunk)
-                for text in text_data
-                for chunk in text_splitter.split_text(text)
-            ]
-
+                # Pecah teks menjadi beberapa chunk
+                chunks = text_splitter.split_text(text)
+                # Siapkan metadata berdasarkan data row
+                metadata = {
+                    "id": row['id'],
+                    "full_name": row['full_name'],
+                    "nik": row['nik'],
+                    "status": row['status'],
+                    "birth_date": str(row['birth_date']),
+                    "department": row['department'],
+                    "location": row['location'],
+                    "division": row['division'],
+                    "position": row['position'],
+                    "education_major": row['education_major'],
+                    "education_institute": row['education_institute'],
+                    "company_history": row['company_history'],
+                    "position_history": row['position_history']
+                }
+                # Buat Document untuk setiap chunk dengan metadata yang sesuai
+                for chunk in chunks:
+                    documents.append(Document(page_content=chunk, metadata=metadata))
             return documents
 
     except Exception as e:
@@ -98,7 +110,7 @@ def get_data_from_mysql():
             connection.close()
               
 # 3. Setup Embedding dan Vector Database
-embedding_function = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+embedding_function = HuggingFaceEmbeddings(model_name="sentence-transformers/multi-qa-mpnet-base-dot-v1")
 db_name = "vector_db"
 
 # Hapus database lama jika ada
@@ -125,39 +137,40 @@ except Exception as e:
 # 4. Setup Model LLM (tetap sama)
 llm = ChatGroq(
     model_name='deepseek-r1-distill-llama-70b',
-    api_key="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",
+    api_key="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",
     temperature=0.5,
 )
 llm2 = ChatGroq(
     model='llama-3.3-70b-versatile',
-    api_key="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",
+    api_key="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",
     temperature=0.3
 )
-
-
-# date_now = datetime.now().date()
-
+llm_filter = ChatGroq(
+    model='llama-3.3-70b-versatile',
+    api_key="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",
+    temperature=0.2
+)
 # 5. Template Prompt (tetap sama)
 template = """
-**Instruksi:**
-Anda adalah asisten pencari kandidat yang bertugas memilih kandidat terbaik berdasarkan data berikut:
+Instruksi:
+Anda adalah asisten pencari kandidat. Pilih kandidat terbaik berdasarkan data berikut:
 {context}
 
-**Perintah:**
+Perintah:
 {question}
 
-**Note:**
-- Pastikan hanya memilih kandidat yang relevan berdasarkan perintah.
-- Jika jumlah kandidat yang ditemukan tidak sesuai dengan permintaan, hanya tampilkan yang relevan (harus memenuhi setiap permintaan user, misal user meminta spesifikasi department, divisi, posisi, dan lainnya. Output yang dikeluarkan WAJIB memenuhi semuanya bukan yang mirip).
-- Jangan menambahkan informasi tambahan di luar data yang diberikan.
-- Tiap ID yang menjadi output tidak boleh duplikat (tiap ID dalam 1 output harus unique)
-- Lakukan pengecekan ulang dari awal agar outputnya sudah sesuai dengan permintaan user (JANGAN sampai ada output yang diluar permintaan user)
+Catatan:
+- Pilih hanya kandidat yang 100 persen memenuhi setiap kriteria (Perhatikan department, divisi, posisi dan semua perintah user. Pastikan outputnya 100 persen memenuhi kriteria).
+- Jangan menambahkan informasi di luar data yang diberikan.
+- Setiap ID harus unik dalam satu output.
+- Cek ulang agar hasil sesuai dengan permintaan.
 
-**Format Jawaban (Gunakan format ini, tanpa tambahan karakter lain):**
+Format Jawaban (Buat sesuai persis sesuai formatnya. Perhatikan huruf kapitalnya juga -> ID, Alasan):
 1. ID: [id]
-   Alasan: [Berikan alasan secara jelas dan spesifik mengapa kandidat ini dipilih]
+   Alasan: [Alasan pemilihan kandidat]
 
-Jika tidak ada satupun kandidat yang cocok, jawab: "Tidak ditemukan kandidat yang sesuai dengan kriteria. Apabila ada walaupun hanya 1 orang munculkan saja yang ada
+Jika tidak ada yang cocok, Jika ada meskipun satu, tampilkan yang ada, jawab:
+"Tidak ditemukan kandidat yang sesuai."
 """
 template2 = """
 **Instruksi:**
@@ -179,7 +192,26 @@ Anda adalah sistem rekomendasi kalimat perintah yang bertugas membuat 3 perintah
 - Output: ["Cari kandidat dengan pengalaman di bidang keamanan siber.", "Cari kandidat dengan latar belakang software engineering.", "Cari kandidat yang memiliki keahlian cloud computing."]
 
 **Format Jawaban (Gunakan format JSON array, tidak perlu tambahan lain):**
-["perintah1", "perintah2", "perintah2"]
+["perintah1", "perintah2", "perintah3"]
+"""
+filter_prompt_template = """
+Instruksi: 
+Anda adalah sistem ekstraksi filter divisi. Ambil divisi dari perintah pengguna.
+Jika tidak disebutkan, kosongkan saja. Hanya tampilkan dalam format JSON.
+Divisi yang ada = ["FAD", "FLEET", "HCCA", "OPS", "CMD"]
+Contoh:
+- Input: "Cari MANAGER IT di divisi FAD"
+  Output: {"division": "FAD"}
+
+- Input: "Tampilkan kandidat MANAGER IT di HCCA atau OPS"
+  Output: {"division": ["HCCA", "OPS"]}
+
+- Input: "Cari kandidat posisi ANALYST"
+  Output: {}
+
+Jawaban (Hanya JSON):
+
+Perintah:
 """
 prompt = PromptTemplate(
     template=template,
@@ -189,32 +221,18 @@ prompt2 = PromptTemplate(
     template=template2,
     input_variables=["context", "question"]
 )
-
-# 6. Setup RAG Chain (tetap sama)
-retriever = db.as_retriever(search_kwargs={"k": 50})
-qa_chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    chain_type="stuff",
-    retriever=retriever,
-    chain_type_kwargs={"prompt": prompt},
-    return_source_documents=True
+prompt3 = PromptTemplate(
+    template=filter_prompt_template,
+    input_variables=["question"]
 )
-qa_chain2 = RetrievalQA.from_chain_type(
-    llm=llm2,
-    chain_type="stuff",
-    retriever=retriever,
-    chain_type_kwargs={"prompt": prompt2},
-    return_source_documents=True
-)
-
-@app.route('/update', methods=['get'])
+@app.route('/update', methods=['GET'])
 def update_vector_db():
     # Mengambil data terbaru dari MySQL
     documents = get_data_from_mysql()
     
     if not documents:
         print("Tidak ada data baru untuk memperbarui ChromaDB.")
-        return
+        return jsonify({"message": "Tidak ada data baru"}), 200
     
     # Persiapkan embedding function untuk update
     embedding_function = HuggingFaceEmbeddings(model_name="sentence-transformers/multi-qa-mpnet-base-dot-v1")
@@ -251,22 +269,19 @@ def update_vector_db():
         )
         
         print(f"ChromaDB diperbarui dengan {len(documents)} dokumen.")
-        return {
+        return jsonify({
             "message": "ChromaDB diperbarui dan retriever diperbarui."
-        }, 200
+        }), 200
     except Exception as e:
         print(f"Error membangun ChromaDB: {e}")
         raise   
     
-     
-# 7. *Function*
+# 7. Fungsi Bantuan untuk Mengambil Data Employee Berdasarkan Hasil LLM
 def get_array_employee(data):
     connection = None
     try:
-        # Pastikan db_config sudah didefinisikan dengan benar
         connection = pymysql.connect(**db_config)
         with connection.cursor() as cursor:
-            # Jika data sudah berupa list, gunakan langsung; jika string, parsing JSON-nya.
             if isinstance(data, list):
                 data_array = data
             else:
@@ -354,8 +369,7 @@ def regex_sugestion(data):
     # Lakukan trim pada setiap elemen yang merupakan string
     return [s.strip() for s in data if isinstance(s, str)]
 
-
-# Endpoint API (tetap sama)
+# Endpoint API untuk Pencarian Kandidat
 @app.route('/search', methods=['POST'])
 def search_candidates():
     try:
@@ -365,13 +379,47 @@ def search_candidates():
         if not user_query:
             return jsonify({"error": "Query tidak boleh kosong"}), 400
         print(user_query)
+        # retriever = db.as_retriever(search_kwargs={"k": 50})
+        filters = llm_filter.invoke(
+            f"{filter_prompt_template} {user_query})"
+        )
+        print(filters.content)
+        try:
+            filters_dict = json.loads(filters.content)
+        except Exception as e:
+            print(f"Error parsing filter JSON: {e}")
+            filters_dict = {}
+        # filters = get_filter_from_prompt(user_query)
+        # print("Filter yang diterapkan:", filters)
+
+        search_kwargs = {"k": 50}
+        
+        if filters_dict:
+            search_kwargs["filter"] = filters_dict
+
+        retriever = db.as_retriever(search_kwargs=search_kwargs)
+
+        qa_chain = RetrievalQA.from_chain_type(
+            llm=llm,
+            chain_type="stuff",
+            retriever=retriever,
+            chain_type_kwargs={"prompt": prompt},
+            return_source_documents=True
+        )
+        qa_chain2 = RetrievalQA.from_chain_type(
+            llm=llm2,
+            chain_type="stuff",
+            retriever=retriever,
+            chain_type_kwargs={"prompt": prompt2},
+            return_source_documents=True
+        )
         current_date = datetime.now().strftime("%d %B %Y")
         case_information = f"{user_query} (Untuk Sekedar Informasi, Tanggal saat ini adalah {current_date})"
         
         # START OF SECOND LLM
         llm3 = ChatGroq(
             model='llama-3.1-8b-instant',
-            api_key="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",
+            api_key="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",
             temperature=0.3
         )
         topic = '''
@@ -383,12 +431,12 @@ def search_candidates():
         {topic} Prompt yang perlu diperbaiki: {case_information}
         '''
         
-        prompt = PromptTemplate.from_template(
+        prompt_obj = PromptTemplate.from_template(
             template=prompt_template
         )
             
         # Create and run the chain
-        chain = prompt | llm3
+        chain = prompt_obj | llm3
             
         # Get the response
         response2 = chain.invoke({"text": topic})
@@ -397,7 +445,7 @@ def search_candidates():
         # END OF SECOND LLM
         # START OF THIRD LLM
         response3 = qa_chain2.invoke({"query": response2.content})
-        print("INI LLM 3: ",response3["result"])
+        print("INI LLM 3: ", response3["result"])
         # END OF THIRD LLM
         result = qa_chain.invoke({"query": response2.content})
         think_text, candidates = regex_think_and_candidates(result["result"])
@@ -411,7 +459,7 @@ def search_candidates():
         
         print(flattened_candidates)
         response = {
-            "suggestion" : regex_sugestion(response3["result"]),
+            "suggestion": regex_sugestion(response3["result"]),
             "think": think_text,  # Digunakan pada chat untuk animasi
             "answer": flattened_candidates,  # Digunakan pada card
             "sources": [
@@ -427,7 +475,7 @@ def search_candidates():
            print("benar array", regex_sugestion(response3["result"]))
         else:
             print("bukan array")
-        print("Ini response raw: ",result["result"])
+        print("Ini response raw: ", result["result"])
         return jsonify(response)
     
     except Exception as e:
