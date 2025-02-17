@@ -140,33 +140,46 @@ llm2 = ChatGroq(
 # 5. Template Prompt (tetap sama)
 template = """
 **Instruksi:**
-Anda adalah asisten pencari kandidat. Gunakan data berikut untuk menjawab:
+Anda adalah asisten pencari kandidat yang bertugas memilih kandidat terbaik berdasarkan data berikut:
 {context}
 
-**Pertanyaan:**
+**Perintah:**
 {question}
-**note:**
-Perhatikan dan Pahami konteks Pertanyaannya dengan benar, Apabila jumlah yang relevan tidak sesuai dengan jumlah yang diminta, Keluarkan saja sesuai dengan jumlah yang relevan.
-Tampilkan hanya jawaban finalnya sesuai dengan format jawaban.
 
-**Format jawaban (format seperti dibawah ini dan tidak perlu menggunakan * pada outputnya):**
+**Note:**
+- Pastikan hanya memilih kandidat yang relevan berdasarkan perintah.
+- Jika jumlah kandidat yang ditemukan tidak sesuai dengan permintaan, hanya tampilkan yang relevan (harus memenuhi setiap permintaan user, misal user meminta spesifikasi department, divisi, posisi, dan lainnya. Output yang dikeluarkan WAJIB memenuhi semuanya bukan yang mirip).
+- Jangan menambahkan informasi tambahan di luar data yang diberikan.
+- Tiap ID yang menjadi output tidak boleh duplikat (tiap ID dalam 1 output harus unique)
+- Lakukan pengecekan ulang dari awal agar outputnya sudah sesuai dengan permintaan user (JANGAN sampai ada output yang diluar permintaan user)
+
+**Format Jawaban (Gunakan format ini, tanpa tambahan karakter lain):**
 1. ID: [id]
-   Alasan: [Berikan Alasannya secara lengkap dan terperinci mengapa orang tersebut dipilih sebagai kandidat]
+   Alasan: [Berikan alasan secara jelas dan spesifik mengapa kandidat ini dipilih]
+
+Jika tidak ada satupun kandidat yang cocok, jawab: "Tidak ditemukan kandidat yang sesuai dengan kriteria. Apabila ada walaupun hanya 1 orang munculkan saja yang ada
 """
 template2 = """
 **Instruksi:**
-Anda adalah seorang rekomender system pertanyaan yang dapat membuat pertanyaan yang mirip pertanyaan sebelumnya, Berikan saya 3 pertanyaan serupa berdasarkan pertanyaan berikut:
-**Pertanyaan:**
+Anda adalah sistem rekomendasi kalimat perintah yang bertugas membuat 3 perintah serupa berdasarkan perintah berikut:
+
+**Perintah:**
 {question}
 
-Pastikan pertanyaan yang dihasilkan tetap dalam konteks pencarian kandidat, namun dengan variasi pada jabatan, departemen, atau kriteria lainnya seperti tingkat pengalaman atau latar belakang pendidikan abaikan Date.
+**Kriteria untuk Perintah baru berdasarkan data berikut**:
 {context}
+- Harus tetap dalam konteks pencarian kandidat.
+- Variasi dapat berupa perubahan pada jabatan, departemen, tingkat pengalaman, atau pendidikan.
+- Jangan hanya mengubah kata-kata secara acak, tetapi buat perintah yang tetap masuk akal.
+- Jangan memasukkan informasi tanggal dalam perintah baru.
+- Format dalam kalimat perintah
 
-**note:**
-Jawaban yang anda keluarnya hanya dalam bentuk array yang berisi 3 pertanyaan terkait
+**Contoh sebelum dan sesudah:**
+- Input: "Cari kandidat dengan pengalaman 5 tahun di bidang IT."
+- Output: ["Cari kandidat dengan pengalaman di bidang keamanan siber.", "Cari kandidat dengan latar belakang software engineering.", "Cari kandidat yang memiliki keahlian cloud computing."]
 
-**Format jawaban:**
-["pertanyaan1", "pertanyaan2", "pertanyaan3"]
+**Format Jawaban (Gunakan format JSON array, tidak perlu tambahan lain):**
+["perintah1", "perintah2", "perintah2"]
 """
 prompt = PromptTemplate(
     template=template,
@@ -204,7 +217,7 @@ def update_vector_db():
         return
     
     # Persiapkan embedding function untuk update
-    embedding_function = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    embedding_function = HuggingFaceEmbeddings(model_name="sentence-transformers/multi-qa-mpnet-base-dot-v1")
     db_name = "vector_db"
     
     # Jika collection lama ada, hapus dulu
@@ -359,14 +372,15 @@ def search_candidates():
         llm3 = ChatGroq(
             model='llama-3.1-8b-instant',
             api_key="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",
-            temperature=0.4
+            temperature=0.3
         )
         topic = '''
-        Anda adalah ahli prompting, Tugas Anda Adalah Menparafrase suatu prompt menjadi prompt yang lebih Baik dan jelas, Ubah menjadi kalimat perintah cari. Disini tugasmu hanya memperbaiki kalimatnya Bukan membuat kalimat baru dengan makna yang berbeda jangan menanyakan jumlah/hitung.
-        format hanya jawaban saja
+            Anda adalah ahli prompting, Tugas Anda Adalah Menparafrase suatu prompt menjadi prompt yang lebih Baik dan jelas, Ubah menjadi kalimat perintah cari. Disini tugasmu hanya memperbaiki kalimatnya Bukan membuat kalimat baru dengan makna yang berbeda jangan menanyakan jumlah/hitung.
+
+            format hanya jawaban saja
         '''
         prompt_template = f'''
-        {topic} Berikut adalah prompt yang harus kamu prompt ulang: {case_information}
+        {topic} Prompt yang perlu diperbaiki: {case_information}
         '''
         
         prompt = PromptTemplate.from_template(

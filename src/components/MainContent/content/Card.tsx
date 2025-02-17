@@ -91,7 +91,7 @@ export function Card({ data }: { data: Candidate }) {
       </div>
 
       {/* Tombol Detail */}
-      <Link to={`/admin/employee-detail/${data.id}`} target="_blank">
+      <Link to={`/admin/save-to-cart/${data.id}`} target="_blank">
         <button className="mt-3 px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600">
           Save to Cart
         </button>
