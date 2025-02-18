@@ -153,7 +153,7 @@ llm_filter = ChatGroq(
 # 5. Template Prompt (tetap sama)
 template = """
 Instruksi:
-Anda adalah asisten pencari kandidat. Pilih kandidat terbaik berdasarkan data berikut:
+Anda adalah asisten pencari kandidat perusahaan. Pilih kandidat terbaik berdasarkan data berikut:
 {context}
 
 Perintah:
@@ -164,12 +164,13 @@ Catatan:
 - Jangan menambahkan informasi di luar data yang diberikan.
 - Setiap ID harus unik dalam satu output.
 - Cek ulang agar hasil sesuai dengan permintaan.
+- Tidak apa-apa apabila jumlah yang relevan tidak sesuai dengan jumlah yang diminta. Berikan output seadanya
 
-Format Jawaban (Buat sesuai persis sesuai formatnya. Perhatikan huruf kapitalnya juga -> ID, Alasan):
+Format Jawaban (Buat sesuai persis sesuai formatnya(nomer, ID, Alasan). Perhatikan huruf kapitalnya juga -> ID, Alasan):
 1. ID: [id karyawan pada database]
    Alasan: [Alasan pemilihan kandidat]
 
-Jika tidak ada yang cocok, Jika ada meskipun satu, tampilkan yang ada, jawab:
+Jika tidak ada yang cocok atau perintah diluar cangkupan pencarian kandidat perusahaan, jawab:
 "Tidak ditemukan kandidat yang sesuai."
 """
 template2 = """
@@ -191,15 +192,15 @@ Anda adalah sistem rekomendasi kalimat perintah yang bertugas membuat 3 perintah
 filter_prompt_template = """
 Instruksi: 
 Anda adalah sistem ekstraksi filter divisi dan posisi. Ambil divisi dan posisi dari perintah pengguna.
-Jika tidak disebutkan, kosongkan saja. Hanya tampilkan dalam format JSON.
+Jika tidak disebutkan, kosongkan saja. Khusus untuk posisi, analisis dan buat filternya sesuai list position dibawah, Apabila memang tidak ada yang sesuai, jangan outputkan position. divisi atau posisi yang lebih dari 1 gunakan $in. Hanya tampilkan dalam format JSON.
 Division = ["FAD", "FLEET", "HCCA", "OPS", "CMD"]
 position = ['President Director', 'Director', 'Expatriat', 'General Manager', 'Senior Manager', 'Middle Manager', 'Junior Manager', 'Team Leader', 'Senior Staff', 'Staff', 'Worker', 'Trainee', 'Non Grade']
 Contoh:
 - Input: "Cari MANAGER IT di divisi FAD"
-  Output: {"$and": [{"division": {"$eq": "FAD"}}, {"position": {"$eq": "Manager"}}]}
+  Output: {"$and": [{"division": {"$eq": "FAD"}}, {"position": {"$in": ["General Manager", "Senior Manager", "Middle Manager", "Junior Manager"]}}]}
 
 - Input: "Tampilkan kandidat staff IT di HCCA atau OPS"
-  Output: {"$and": [{"division": {"$eq": ["HCCA","OPS"]}}, {"position": {"$eq": "staff"}}]}
+  Output: {"$and": [{"division": {"$in": ["HCCA","OPS"]}}, {"position": {"$in": ["Senior Staff", "Staff"]}}]}
 
 - Input: "Cari kandidat department ANALYST"
   Output: {}
@@ -363,6 +364,22 @@ def regex_sugestion(data):
     # Lakukan trim pada setiap elemen yang merupakan string
     return [s.strip() for s in data if isinstance(s, str)]
 
+# def modify_position_filter(filter_dict):
+#     # Jika filter_dict memiliki key "$and"
+#     if "$and" in filter_dict:
+#         for condition in filter_dict["$and"]:
+#             if "position" in condition:
+#                 # Cek apakah ada operator $eq untuk posisi
+#                 eq_value = condition["position"].get("$eq")
+#                 if eq_value:
+#                     # Ubah menjadi regex untuk pencarian substring (case-insensitive)
+#                     condition["position"] = {"$regex": f".*{eq_value}.*", "$options": "i"}
+#     elif "position" in filter_dict:
+#         eq_value = filter_dict["position"].get("$eq")
+#         if eq_value:
+#             filter_dict["position"] = {"$regex": f".*{eq_value}.*", "$options": "i"}
+#     return filter_dict
+
 # Endpoint API untuk Pencarian Kandidat
 @app.route('/search', methods=['POST'])
 def search_candidates():
@@ -375,7 +392,7 @@ def search_candidates():
         print(user_query)
         # retriever = db.as_retriever(search_kwargs={"k": 50})
         filters = llm_filter.invoke(
-            f"{filter_prompt_template} {user_query})"
+            f"{filter_prompt_template} {user_query}"
         )
         print(filters.content)
         try:
@@ -389,6 +406,8 @@ def search_candidates():
         search_kwargs = {"k": 50}
         print("Filter Dict:",filters_dict)
         if filters_dict:
+            # print(modify_position_filter(filters_dict))
+            # filters_dict = modify_position_filter(filters_dict)
             search_kwargs["filter"] = filters_dict
 
         retriever = db.as_retriever(search_kwargs=search_kwargs)
