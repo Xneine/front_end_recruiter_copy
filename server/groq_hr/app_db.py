@@ -110,7 +110,7 @@ def get_data_from_mysql():
             connection.close()
               
 # 3. Setup Embedding dan Vector Database
-embedding_function = HuggingFaceEmbeddings(model_name="sentence-transformers/multi-qa-mpnet-base-dot-v1")
+embedding_function = HuggingFaceEmbeddings(model_name="intfloat/e5-large-v2")
 db_name = "vector_db"
 
 # Hapus database lama jika ada
