@@ -178,16 +178,19 @@ Anda adalah sistem rekomendasi kalimat perintah yang bertugas membuat 3 perintah
 
 template_filter = """
 **Instruksi:**
-Anda adalah Human Resource Expert, dimana tugas anda adalah menfilter dan seleksi array kandidat yang ada berdasarkan input dari user. 
+Anda adalah Human Resource Expert, dimana tugas anda adalah menfilter dan menyeleksi array kandidat berdasarkan input dari user. 
 
 Note:
-Tugas Anda adalah menghapus candidat yang tidak sesuai Input user dan menambahkan field alasan pada tiap kandidat. Mengapa ia terpilih dan lolos seleksi. Pahami semantik/konteks dari input user untuk menentukan mana kandidat yang sesuai. Outputkan langsung arraynya saja.
+- Hapus kandidat yang tidak sesuai dengan input user.
+- Update field 'alasan' pada tiap kandidat yang menjelaskan mengapa kandidat tersebut terpilih.
+- Pahami semantik dan konteks input user untuk menentukan kandidat yang cocok.
+- Outputkan langsung array dalam format JSON.
 
-Contoh:
-Input user: 10 Manager IT Application divisi OPS
-Array kandidat: [{'id': 41, 'full_name': 'Andrea Martin', 'status': 'Aktif', 'birth_date': datetime.date(1995, 10, 14), 'department': 'Quality Control Departement', 'location': 'East Davidside', 'division': 'OPS', 'position': 'Middle Manager', 'company_history': 'Fuentes LLC', 'position_history': 'President Director', 'certificates': 'Tidak Ada', 'education_details': 'S1 di Universitas Negeri Surabaya Jurusan Teknik Mesin', 'alasan': 'Field alasan'}, {'id': 45, 'full_name': 'John Burns', 'status': 'Aktif', 'birth_date': datetime.date(1994, 4, 4), 'department': 'Human Capital', 'location': 'South Thomas', 'division': 'OPS', 'position': 'Senior Manager', 'company_history': 'Petty, Armstrong and Bender', 'position_history': 'Trainee', 'certificates': 'Tidak Ada', 'education_details': 'S1 di Universitas Negeri Semarang Jurusan Farmasi', 'alasan': 'Field alasan'}, {'id': 193, 'full_name': 'Pamela Hawkins', 'status': 'Aktif', 'birth_date': datetime.date(1972, 3, 21), 'department': 'IT Application Development Department', 'location': 'Kirkland', 'division': 'OPS', 'position': 'Senior Manager', 'company_history': 'Howard, Forbes and Farmer', 'position_history': 'Non Grade', 'certificates': 'Six Sigma Black Belt', 'education_details': 'S1 di Universitas Gadjah Mada Jurusan Teknik Elektro', 'alasan': 'Field alasan'}, {'id': 386, 'full_name': 'Lisa Fox', 'status': 'Aktif', 'birth_date': datetime.date(1984, 10, 3), 'department': 'Human Capital & Corporate Affairs', 'location': 'Meyersstad', 'division': 'OPS', 'position': 'Junior Manager', 'company_history': 'Flores-Reed', 'position_history': 'Trainee', 'certificates': 'Tidak Ada', 'education_details': 'S1 di Institut Teknologi Bandung Jurusan Keperawatan', 'alasan': 'Field alasan'}, {'id': 454, 'full_name': 'Monique James', 'status': 'Aktif', 'birth_date': datetime.date(2003, 2, 5), 'department': 'Quality Assurance Department', 'location': 'Amymouth', 'division': 'OPS', 'position': 'General Manager', 'company_history': 'Ford-Hall', 'position_history': 'Director', 'certificates': 'Tidak Ada', 'education_details': 'S1 di Institut Teknologi Sepuluh Nopember Jurusan Sosiologi', 'alasan': 'Field alasan'}]
-Output: [{'id': 193, 'full_name': 'Pamela Hawkins', 'status': 'Aktif', 'birth_date': datetime.date(1972, 3, 21), 'department': 'IT Application Development Department', 'location': 'Kirkland', 'division': 'OPS', 'position': 'Senior Manager', 'company_history': 'Howard, Forbes and Farmer', 'position_history': 'Non Grade', 'certificates': 'Six Sigma Black Belt', 'education_details': 'S1 di Universitas Gadjah Mada Jurusan Teknik Elektro', 'alasan': 'Pamela Hawkins berada pada lingkungan department IT yaitu IT Application Development Department dan Ia juga merupakan seorang manajer yaitu senior manager sehingga cocok dengan kriteria yang diminta'}]
+Input user: {user_query}
 
+Array Kandidat: {executed_result}
+
+Jawaban (format JSON array):
 """
 
 prompt = PromptTemplate(
@@ -199,7 +202,8 @@ prompt2 = PromptTemplate(
     input_variables=["context", "question"]
 )
 promptFilter = PromptTemplate(
-    template=template_filter
+    template=template_filter,
+    input_variables=["user_query", "executed_result"]
 )
 def regex_think_and_sql(result_text):
     """
@@ -329,10 +333,24 @@ def search_candidates():
                 row['alasan'] = "Field alasan"
         print(executed_result)
         # Buat prompt kustom dengan menyematkan informasi yang sudah ada
-        qa_chain3 = RetrievalQA.from_llm(
-            llm, prompt=f"{promptFilter} Berikut adalah Array Kandidat: {executed_result}"
+        qa_chain3 = RetrievalQA.from_chain_type(
+            llm=llm2,
+            chain_type="stuff",
+            retriever = retriever,
+            chain_type_kwargs={"prompt": promptFilter},
+            return_source_documents=True
         )
-        response3 = qa_chain3(user_query) 
+        executed_result_str = json.dumps(executed_result, default=str)
+        response3 =qa_chain3.invoke({
+            "user_query": user_query,
+            "executed_result": executed_result_str
+        })
+        try:
+            # Jika outputnya berupa string JSON, konversi ke list
+            filtered_candidates = json.loads(response3.get("result", "[]"))
+        except json.JSONDecodeError as e:
+            print("Error parsing JSON from qa_chain3 output:", e)
+            filtered_candidates = []
         response_payload = {
             "suggestion": regex_sugestion(response2["result"]),
             "think": think_text,
