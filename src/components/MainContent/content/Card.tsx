@@ -69,7 +69,14 @@ export function Card({ data }: { data: Candidate }) {
           <div className="w-40 font-semibold">Pendidikan</div>
           <div className="w-2">:</div>
           <div>
-            {data.education_major} di {data.education_institute}
+            {data.education_details}
+          </div>
+        </div>
+        <div className="flex">
+          <div className="w-40 font-semibold">Skill & certificate</div>
+          <div className="w-2">:</div>
+          <div>
+            {data.certificates}
           </div>
         </div>
         <div className="flex">

@@ -38,63 +38,47 @@ def get_data_from_mysql():
     try:
         connection = pymysql.connect(**db_config)
         with connection.cursor() as cursor:
-            query = """
-                        SELECT 
-                            e.id, 
-                            e.full_name,
-                            e.status,
-                            e.birth_date,
-                            d.department,
-                            e.location,
-                            e.division,
-                            p.position,
-                            e.company_history,
-                            e.position_history,
-                            IFNULL(GROUP_CONCAT(DISTINCT c.certificate_name ORDER BY c.certificate_name SEPARATOR ', '), 'Tidak Ada') AS certificates,
-                            IFNULL(GROUP_CONCAT(DISTINCT CONCAT(str.strata, ' di ', s.school_name, ' Jurusan ', m.major_name) ORDER BY str.strata SEPARATOR ' | '), 'Tidak Ada') AS education_details
-                        FROM employee e 
-                        LEFT JOIN department d ON e.department = d.id 
-                        LEFT JOIN position p ON p.id = e.position
-                        LEFT JOIN employee_education ep ON ep.employee_id = e.id
-                        LEFT JOIN major m ON ep.major_id = m.id
-                        LEFT JOIN school s ON ep.school_id = s.id
-                        LEFT JOIN strata str ON ep.strata = str.id
-                        LEFT JOIN employee_certificate ec ON e.id = ec.employee_id
-                        LEFT JOIN certificate c ON ec.certificate_id = c.id
-                        GROUP BY e.id;
-            """
-            cursor.execute(query)
-            results = cursor.fetchall()
+            # Ambil data departemen
+            query_dept = "SELECT department FROM department"
+            cursor.execute(query_dept)
+            departments = cursor.fetchall()
+            
+            # Ambil data sertifikat
+            query_cert = "SELECT certificate_name FROM certificate"
+            cursor.execute(query_cert)
+            certificates = cursor.fetchall()
 
+            # Ambil data jurusan (major)
+            query_major = "SELECT major FROM major_name"
+            cursor.execute(query_major)
+            majors = cursor.fetchall()
+
+            # Ambil data posisi
+            query_pos = "SELECT position FROM position"
+            cursor.execute(query_pos)
+            positions = cursor.fetchall()
+
+            # Ambil data sekolah
+            query_school = "SELECT school FROM school_name"
+            cursor.execute(query_school)
+            schools = cursor.fetchall()
+
+            # Gabungkan data hasil query ke dalam sebuah teks
+            text = "Data Referensi:\n\n"
+            text += "Departemen:\n" + "\n".join([row["department"] for row in departments]) + "\n\n"
+            text += "Sertifikat:\n" + "\n".join([row["certificate_name"] for row in certificates]) + "\n\n"
+            text += "Jurusan:\n" + "\n".join([row["major"] for row in majors]) + "\n\n"
+            text += "Posisi:\n" + "\n".join([row["position"] for row in positions]) + "\n\n"
+            text += "Sekolah:\n" + "\n".join([row["school"] for row in schools])
+            
             # Buat instance text splitter untuk memecah teks panjang menjadi chunk
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+            chunks = text_splitter.split_text(text)
+            
             documents = []
-            for row in results:
-                # Gabungkan data tiap baris menjadi teks
-                text = f"""
-                id: {row['id']}
-                Nama: {row['full_name']}
-                Status: {row['status']}
-                Tanggal Lahir: {row['birth_date']}
-                Departemen: {row['department']}
-                Lokasi: {row['location']}
-                Divisi: {row['division']}
-                Posisi: {row['position']}
-                Sertifikat: {row['certificates']}
-                Pendidikan: {row['education_details']}
-                Riwayat Pekerjaan: {row['position_history']}
-                Riwayat Perusahaan: {row['company_history']}
-                """
-                # Pecah teks menjadi beberapa chunk
-                chunks = text_splitter.split_text(text)
-                # Siapkan metadata berdasarkan data row
-                metadata = {
-                    "division": row['division'],
-                    "position": row['position'],
-                }
-                # Buat Document untuk setiap chunk dengan metadata yang sesuai
-                for chunk in chunks:
-                    documents.append(Document(page_content=chunk, metadata=metadata))
+            for chunk in chunks:
+                documents.append(Document(page_content=chunk))
+            
             return documents
 
     except Exception as e:
@@ -103,7 +87,7 @@ def get_data_from_mysql():
     finally:
         if connection:
             connection.close()
-              
+           
 # 3. Setup Embedding dan Vector Database
 embedding_function = HuggingFaceEmbeddings(model_name="intfloat/e5-large-v2")
 db_name = "vector_db"
@@ -140,35 +124,8 @@ llm2 = ChatGroq(
     api_key="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",
     temperature=0
 )
-llm_filter = ChatGroq(
-    model='llama-3.3-70b-versatile',
-    api_key="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",
-    temperature=0
-)
 # 5. Template Prompt (tetap sama)
 template = """
-Instruksi:
-Anda adalah asisten pencari kandidat perusahaan. Pilih kandidat terbaik berdasarkan data berikut:
-{context}
-
-Perintah:
-{question}
-
-Catatan:
-- Pilih hanya kandidat yang 100 persen memenuhi setiap kriteria (Perhatikan department, divisi, posisi dan semua perintah user. Pastikan outputnya 100 persen memenuhi kriteria).
-- Jangan menambahkan informasi di luar data yang diberikan.
-- Setiap ID harus unik dalam satu output.
-- Cek ulang agar hasil sesuai dengan permintaan.
-- Tidak apa-apa apabila jumlah yang relevan tidak sesuai dengan jumlah yang diminta. Berikan output seadanya
-
-Format Jawaban (Buat sesuai persis sesuai formatnya(nomer, ID, Alasan). Perhatikan huruf kapitalnya juga -> ID, Alasan):
-1. ID: [id karyawan pada database]
-   Alasan: [Alasan pemilihan kandidat]
-
-Jika tidak ada yang cocok atau perintah diluar cangkupan pencarian kandidat perusahaan, jawab:
-"Tidak ditemukan kandidat yang sesuai."
-"""
-template2 = """
 **Instruksi:**
 Anda adalah sistem rekomendasi kalimat perintah yang bertugas membuat 3 perintah serupa berdasarkan perintah berikut:
 
@@ -184,7 +141,7 @@ Anda adalah sistem rekomendasi kalimat perintah yang bertugas membuat 3 perintah
 **Format Jawaban (Gunakan format JSON array, tidak perlu tambahan lain):**
 ["perintah1", "perintah2", "perintah3"]
 """
-filter_prompt_template = """
+sql_query_template = """
 Instruksi: 
 Anda adalah sistem ekstraksi filter divisi dan posisi menggunakan query MongoDB. Ambil divisi dan posisi dari perintah pengguna.
 Jika tidak disebutkan, kosongkan saja. Khusus untuk posisi, analisis dan buat filternya sesuai list position dibawah, Apabila memang tidak ada yang sesuai, jangan outputkan position. divisi atau posisi yang lebih dari 1 gunakan $in. Hanya tampilkan dalam format JSON.
@@ -208,68 +165,14 @@ Jawaban (Hanya JSON):
 Perintah:
 """
 prompt = PromptTemplate(
-    template=template,
+    template=sql_query_template,
     input_variables=["context", "question"]
 )
 prompt2 = PromptTemplate(
-    template=template2,
+    template=template,
     input_variables=["context", "question"]
 )
-prompt3 = PromptTemplate(
-    template=filter_prompt_template,
-    input_variables=["question"]
-)
-@app.route('/update', methods=['GET'])
-def update_vector_db():
-    # Mengambil data terbaru dari MySQL
-    documents = get_data_from_mysql()
-    
-    if not documents:
-        print("Tidak ada data baru untuk memperbarui ChromaDB.")
-        return jsonify({"message": "Tidak ada data baru"}), 200
-    
-    # Persiapkan embedding function untuk update
-    embedding_function = HuggingFaceEmbeddings(model_name="sentence-transformers/multi-qa-mpnet-base-dot-v1")
-    db_name = "vector_db"
-    
-    # Jika collection lama ada, hapus dulu
-    if os.path.exists(db_name):
-        try:
-            chroma_db = Chroma(persist_directory=db_name, embedding_function=embedding_function)
-            chroma_db.delete_collection()  # Menghapus koleksi lama
-            print(f"Database lama di {db_name} dihapus.")
-        except Exception as e:
-            print(f"Gagal menghapus database lama: {e}")
-    
-    # Bangun database baru dari dokumen terbaru
-    try:
-        db = Chroma.from_documents(
-            documents=documents,
-            embedding=embedding_function,
-            persist_directory=db_name
-        )
-        
-        # Memperbarui retriever dan qa_chain dengan database yang baru
-        global retriever
-        retriever = db.as_retriever(search_kwargs={"k": 10})  # Pastikan retriever menggunakan database yang baru
-        
-        global qa_chain
-        qa_chain = RetrievalQA.from_chain_type(
-            llm=llm,
-            chain_type="stuff",
-            retriever=retriever,
-            chain_type_kwargs={"prompt": prompt},
-            return_source_documents=True
-        )
-        
-        print(f"ChromaDB diperbarui dengan {len(documents)} dokumen.")
-        return jsonify({
-            "message": "ChromaDB diperbarui dan retriever diperbarui."
-        }), 200
-    except Exception as e:
-        print(f"Error membangun ChromaDB: {e}")
-        raise   
-    
+
 # 7. Fungsi Bantuan untuk Mengambil Data Employee Berdasarkan Hasil LLM
 def get_array_employee(data):
     connection = None
@@ -368,22 +271,6 @@ def regex_sugestion(data):
         return []
     # Lakukan trim pada setiap elemen yang merupakan string
     return [s.strip() for s in data if isinstance(s, str)]
-
-# def modify_position_filter(filter_dict):
-#     # Jika filter_dict memiliki key "$and"
-#     if "$and" in filter_dict:
-#         for condition in filter_dict["$and"]:
-#             if "position" in condition:
-#                 # Cek apakah ada operator $eq untuk posisi
-#                 eq_value = condition["position"].get("$eq")
-#                 if eq_value:
-#                     # Ubah menjadi regex untuk pencarian substring (case-insensitive)
-#                     condition["position"] = {"$regex": f".*{eq_value}.*", "$options": "i"}
-#     elif "position" in filter_dict:
-#         eq_value = filter_dict["position"].get("$eq")
-#         if eq_value:
-#             filter_dict["position"] = {"$regex": f".*{eq_value}.*", "$options": "i"}
-#     return filter_dict
 
 # Endpoint API untuk Pencarian Kandidat
 @app.route('/search', methods=['POST'])
