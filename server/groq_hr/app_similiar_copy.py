@@ -178,19 +178,25 @@ Anda adalah sistem rekomendasi kalimat perintah yang bertugas membuat 3 perintah
 
 template_filter = """
 **Instruksi:**
-Anda adalah Human Resource Expert, dimana tugas anda adalah menfilter dan menyeleksi array kandidat berdasarkan input dari user. 
+Anda adalah Human Resource Expert. Tugas Anda:
+1. Filter array kandidat BERDASARKAN input user: {{ user_query }}
+2. Hapus kandidat yang TIDAK MEMENUHI kriteria input.
+3. Update field 'alasan' dengan penjelasan singkat (contoh: "Sesuai kriteria IT Department dan Manager").
+4. Output HANYA berupa JSON array yang valid, tanpa komentar/markdown.
 
-Note:
-- Hapus kandidat yang tidak sesuai dengan input user.
-- Update field 'alasan' pada tiap kandidat yang menjelaskan mengapa kandidat tersebut terpilih.
-- Pahami semantik dan konteks input user untuk menentukan kandidat yang cocok.
-- Outputkan langsung array dalam format JSON.
+**Contoh Output:**
+[
+    {
+        "id": 123,
+        ...,
+        "alasan": "Sesuai kriteria IT Department"
+    }
+]
 
-Input user: {user_query}
+**Array Kandidat:**
+{{ executed_result }}
 
-Array Kandidat: {executed_result}
-
-Jawaban (format JSON array):
+Jawaban (HANYA JSON array):
 """
 
 prompt = PromptTemplate(
@@ -203,7 +209,8 @@ prompt2 = PromptTemplate(
 )
 promptFilter = PromptTemplate(
     template=template_filter,
-    input_variables=["user_query", "executed_result"]
+    input_variables=["user_query", "executed_result"],
+    template_format="jinja2"
 )
 def regex_think_and_sql(result_text):
     """
@@ -333,28 +340,32 @@ def search_candidates():
                 row['alasan'] = "Field alasan"
         print(executed_result)
         # Buat prompt kustom dengan menyematkan informasi yang sudah ada
-        qa_chain3 = RetrievalQA.from_chain_type(
+        qa_chain3 = LLMChain(
             llm=llm2,
-            chain_type="stuff",
-            retriever = retriever,
-            chain_type_kwargs={"prompt": promptFilter},
-            return_source_documents=True
+            prompt=promptFilter
         )
         executed_result_str = json.dumps(executed_result, default=str)
-        response3 =qa_chain3.invoke({
-            "user_query": user_query,
-            "executed_result": executed_result_str
-        })
         try:
-            # Jika outputnya berupa string JSON, konversi ke list
-            filtered_candidates = json.loads(response3.get("result", "[]"))
-        except json.JSONDecodeError as e:
-            print("Error parsing JSON from qa_chain3 output:", e)
-            filtered_candidates = []
+            response3 = qa_chain3.invoke({
+                "user_query": user_query,
+                "executed_result": executed_result_str
+            })
+            print("Response3 Raw:", response3)  # Debug log
+            print("response3['text']:", response3['text'])
+        except Exception as e:
+            print(f"Error in qa_chain3: {str(e)}")
+            return jsonify({"error": "Gagal memproses filter kandidat"}), 500
+        try:
+            # Bersihkan teks tambahan di luar JSON
+            json_str = re.search(r'\[.*\]', response3['text'], flags=re.DOTALL).group()
+            filtered_data = json.loads(json_str)
+        except (json.JSONDecodeError, AttributeError) as e:
+            print(f"Error parsing JSON: {e}")
+            filtered_data = []  # Atau return error ke client
         response_payload = {
             "suggestion": regex_sugestion(response2["result"]),
             "think": think_text,
-            "answer": response3['result'],
+            "answer": filtered_data,
             "sources": [
                 {"content": doc.page_content, "metadata": doc.metadata}
                 for doc in result["source_documents"]
