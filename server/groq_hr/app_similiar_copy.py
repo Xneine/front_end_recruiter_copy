@@ -156,21 +156,23 @@ Anda adalah SQL Query Expert. Tugas Anda adalah membuat bagian **WHERE, GROUP BY
    - `CMD, OPS, HCCA, FAD, FLEET` adalah **division** (gunakan `e.division`).
    - **JANGAN SALAH** antara department, division, position, certificate, school, strata, dan major.
    - **Gunakan alias yang benar** untuk tabel:
-     - `d.department` untuk department
-     - `p.position` untuk position
-     - `m.major` untuk major
-     - `s.school` untuk school
-     - `str.strata` untuk strata
-     - `c.certificate` untuk certificate
+     - `d.department` untuk department, nama kolom: `department`
+     - `p.position` untuk position, nama kolom: `position`
+     - `m.major` untuk major, nama kolom: `major_name` 
+     - `s.school` untuk school, nama kolom: `school_name`
+     - `str.strata` untuk strata, nama kolom: `strata`
+     - `c.certificate` untuk certificate, nama kolom: `certificate_name`
 
 **Contoh:**
-- **Input:** "berikan 10 Manajer IT di divisi OPS pendidikan D3"
+- **Input:** "berikan 10 Manajer IT di divisi OPS pendidikan Informatika S3 dengan sertifikat Six Sigma black Belt"
 - **Output SQL (hanya ganti WHERE, GROUP BY, LIMIT, tanpa SELECT dan JOIN):**
 sql'''
         WHERE p.position LIKE "%Manager%" 
         AND d.department LIKE "%IT%" 
         AND e.division = "OPS"
-        AND str.strata = "D3"
+        AND str.strata = "S3"
+        AND m.major_name LIKE "%Informatika%"
+        AND c.certificate = "Six Sigma black Belt" 
         GROUP BY e.id
         LIMIT 10;
 '''
@@ -400,3 +402,5 @@ def search_candidates():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5025, debug=True)
+    
+    
