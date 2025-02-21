@@ -33,38 +33,47 @@ db_config = {
 # 2. Ambil Data dari MySQL & Buat Document tanpa chunking
 def get_data_from_mysql():
     connection = None
+    documents = []  # List untuk menyimpan setiap dokumen
     try:
         connection = pymysql.connect(**db_config)
         with connection.cursor() as cursor:
+            # Query Departemen
             cursor.execute("SELECT department FROM department")
             departments = cursor.fetchall()
-            
+            text_departments = "Departemen:\n" + "\n".join([row["department"] for row in departments])
+            documents.append(Document(page_content=text_departments))
+
+            # Query Sertifikat
             cursor.execute("SELECT certificate_name FROM certificate")
             certificates = cursor.fetchall()
+            text_certificates = "Sertifikat:\n" + "\n".join([row["certificate_name"] for row in certificates])
+            documents.append(Document(page_content=text_certificates))
 
-            # Gunakan nama kolom yang sesuai untuk jurusan, misalnya 'major_name'
+            # Query Jurusan
             cursor.execute("SELECT major_name FROM major")
             majors = cursor.fetchall()
+            text_majors = "Jurusan:\n" + "\n".join([row["major_name"] for row in majors])
+            documents.append(Document(page_content=text_majors))
 
+            # Query Posisi
             cursor.execute("SELECT position FROM position")
             positions = cursor.fetchall()
+            text_positions = "Posisi:\n" + "\n".join([row["position"] for row in positions])
+            documents.append(Document(page_content=text_positions))
 
+            # Query Sekolah
             cursor.execute("SELECT school_name FROM school")
             schools = cursor.fetchall()
-            
+            text_schools = "Sekolah:\n" + "\n".join([row["school_name"] for row in schools])
+            documents.append(Document(page_content=text_schools))
+
+            # Query Strata
             cursor.execute("SELECT strata FROM strata")
             stratas = cursor.fetchall()
+            text_stratas = "Strata:\n" + "\n".join([row["strata"] for row in stratas])
+            documents.append(Document(page_content=text_stratas))
 
-            text = "Data Referensi:\n\n"
-            text += "Departemen:\n" + "\n".join([row["department"] for row in departments]) + "\n\n"
-            text += "Sertifikat:\n" + "\n".join([row["certificate_name"] for row in certificates]) + "\n\n"
-            text += "Jurusan:\n" + "\n".join([row["major_name"] for row in majors]) + "\n\n"
-            text += "Posisi:\n" + "\n".join([row["position"] for row in positions]) + "\n\n"
-            text += "Strata:\n" + "\n".join([row["strata"] for row in stratas]) + "\n\n"
-            text += "Sekolah:\n" + "\n".join([row["school_name"] for row in schools])
-            
-            document = Document(page_content=text)
-            return [document]
+        return documents
 
     except Exception as e:
         print(f"Error retrieving data: {e}")
@@ -120,7 +129,8 @@ Note:
 1. Anda harus membuat SQL query untuk mencari data karyawan dan mencari sesuai data (minimal harus ada 1 filter "WHERE").
 2. Apabila tidak ada data yang mendekati, carilah yang paling relevan.
 3. Jika tidak ada permintaan jumlah gunakan LIMIT 25
-4. Tugas Anda hanyalah menyesuaikan WHERE pada contoh dibawah (HANYA UBAH "WHERE" SAJA)
+4. Tugas Anda hanyalah menyesuaikan WHERE dan LIMIT pada contoh dibawah (PENTING: HANYA UBAH "WHERE" dan "LIMIT" SAJA, JANGAN UBAH DARI SELECT HINGGA JOINNYA )
+5. Dalam Konteks "WHERE" perhatikan apa yang dibandingkan berdasarkan data yang diberikan. Misal CMD, OPS, HCCA, FAD, FLEET adalah division. (PENTING: UNTUK MENENTUKAN WHERE PADA DEPARTMENT, DIVISION, POSITION, CERTIFICATE, SCHOOL, STRATA, MAJOR BACA DULU DATANYA, JANGAN SAMPAI ADA YANG SEHARUSNYA WHERE UNTUK DEPARTMENT MALAH DIBUAT WHERE DIVISION)
 
 Contoh:
 Input: berikan 10 Manajer IT di divisi OPS pendidikan D3
@@ -178,16 +188,26 @@ Anda adalah sistem rekomendasi kalimat perintah yang bertugas membuat 3 perintah
 
 template_filter = """
 **Instruksi:**
-Anda adalah Human Resource Expert, dimana tugas anda adalah menfilter dan seleksi array kandidat yang ada berdasarkan input dari user. 
+Anda adalah Human Resource Expert. Tugas Anda mengecek bagian DEPARTMENT:
+1. Filter array kandidat BERDASARKAN input user: {{ user_query }}
+2. Hapus kandidat yang TIDAK MEMENUHI kriteria department input.
+3. Apabila semua kandidat sudah sesuai tidak perlu ada yang dihapus
+4. Update field 'alasan' dengan penjelasan singkat (contoh: "Sesuai kriteria IT Department dan Manager").
+5. Output HANYA berupa JSON array yang valid, tanpa komentar/markdown.
 
-Note:
-Tugas Anda adalah menghapus candidat yang tidak sesuai Input user dan menambahkan field alasan pada tiap kandidat. Mengapa ia terpilih dan lolos seleksi. Pahami semantik/konteks dari input user untuk menentukan mana kandidat yang sesuai. Outputkan langsung arraynya saja.
+**Contoh Output:**
+[
+    {
+        "id": 123,
+        ...,
+        "alasan": "Sesuai kriteria IT Department"
+    }
+]
 
-Contoh:
-Input user: 10 Manager IT Application divisi OPS
-Array kandidat: [{'id': 41, 'full_name': 'Andrea Martin', 'status': 'Aktif', 'birth_date': datetime.date(1995, 10, 14), 'department': 'Quality Control Departement', 'location': 'East Davidside', 'division': 'OPS', 'position': 'Middle Manager', 'company_history': 'Fuentes LLC', 'position_history': 'President Director', 'certificates': 'Tidak Ada', 'education_details': 'S1 di Universitas Negeri Surabaya Jurusan Teknik Mesin', 'alasan': 'Field alasan'}, {'id': 45, 'full_name': 'John Burns', 'status': 'Aktif', 'birth_date': datetime.date(1994, 4, 4), 'department': 'Human Capital', 'location': 'South Thomas', 'division': 'OPS', 'position': 'Senior Manager', 'company_history': 'Petty, Armstrong and Bender', 'position_history': 'Trainee', 'certificates': 'Tidak Ada', 'education_details': 'S1 di Universitas Negeri Semarang Jurusan Farmasi', 'alasan': 'Field alasan'}, {'id': 193, 'full_name': 'Pamela Hawkins', 'status': 'Aktif', 'birth_date': datetime.date(1972, 3, 21), 'department': 'IT Application Development Department', 'location': 'Kirkland', 'division': 'OPS', 'position': 'Senior Manager', 'company_history': 'Howard, Forbes and Farmer', 'position_history': 'Non Grade', 'certificates': 'Six Sigma Black Belt', 'education_details': 'S1 di Universitas Gadjah Mada Jurusan Teknik Elektro', 'alasan': 'Field alasan'}, {'id': 386, 'full_name': 'Lisa Fox', 'status': 'Aktif', 'birth_date': datetime.date(1984, 10, 3), 'department': 'Human Capital & Corporate Affairs', 'location': 'Meyersstad', 'division': 'OPS', 'position': 'Junior Manager', 'company_history': 'Flores-Reed', 'position_history': 'Trainee', 'certificates': 'Tidak Ada', 'education_details': 'S1 di Institut Teknologi Bandung Jurusan Keperawatan', 'alasan': 'Field alasan'}, {'id': 454, 'full_name': 'Monique James', 'status': 'Aktif', 'birth_date': datetime.date(2003, 2, 5), 'department': 'Quality Assurance Department', 'location': 'Amymouth', 'division': 'OPS', 'position': 'General Manager', 'company_history': 'Ford-Hall', 'position_history': 'Director', 'certificates': 'Tidak Ada', 'education_details': 'S1 di Institut Teknologi Sepuluh Nopember Jurusan Sosiologi', 'alasan': 'Field alasan'}]
-Output: [{'id': 193, 'full_name': 'Pamela Hawkins', 'status': 'Aktif', 'birth_date': datetime.date(1972, 3, 21), 'department': 'IT Application Development Department', 'location': 'Kirkland', 'division': 'OPS', 'position': 'Senior Manager', 'company_history': 'Howard, Forbes and Farmer', 'position_history': 'Non Grade', 'certificates': 'Six Sigma Black Belt', 'education_details': 'S1 di Universitas Gadjah Mada Jurusan Teknik Elektro', 'alasan': 'Pamela Hawkins berada pada lingkungan department IT yaitu IT Application Development Department dan Ia juga merupakan seorang manajer yaitu senior manager sehingga cocok dengan kriteria yang diminta'}]
+**Array Kandidat:**
+{{ executed_result }}
 
+Jawaban (HANYA JSON array):
 """
 
 prompt = PromptTemplate(
@@ -199,7 +219,9 @@ prompt2 = PromptTemplate(
     input_variables=["context", "question"]
 )
 promptFilter = PromptTemplate(
-    template=template_filter
+    template=template_filter,
+    input_variables=["user_query", "executed_result"],
+    template_format="jinja2"
 )
 def regex_think_and_sql(result_text):
     """
@@ -329,14 +351,32 @@ def search_candidates():
                 row['alasan'] = "Field alasan"
         print(executed_result)
         # Buat prompt kustom dengan menyematkan informasi yang sudah ada
-        qa_chain3 = RetrievalQA.from_llm(
-            llm, prompt=f"{promptFilter} Berikut adalah Array Kandidat: {executed_result}"
+        qa_chain3 = LLMChain(
+            llm=llm2,
+            prompt=promptFilter
         )
-        response3 = qa_chain3(user_query) 
+        executed_result_str = json.dumps(executed_result, default=str)
+        try:
+            response3 = qa_chain3.invoke({
+                "user_query": user_query,
+                "executed_result": executed_result_str
+            })
+            print("Response3 Raw:", response3)  # Debug log
+            print("response3['text']:", response3['text'])
+        except Exception as e:
+            print(f"Error in qa_chain3: {str(e)}")
+            return jsonify({"error": "Gagal memproses filter kandidat"}), 500
+        try:
+            # Bersihkan teks tambahan di luar JSON
+            json_str = re.search(r'\[.*\]', response3['text'], flags=re.DOTALL).group()
+            filtered_data = json.loads(json_str)
+        except (json.JSONDecodeError, AttributeError) as e:
+            print(f"Error parsing JSON: {e}")
+            filtered_data = []  # Atau return error ke client
         response_payload = {
             "suggestion": regex_sugestion(response2["result"]),
             "think": think_text,
-            "answer": response3['result'],
+            "answer": filtered_data,
             "sources": [
                 {"content": doc.page_content, "metadata": doc.metadata}
                 for doc in result["source_documents"]

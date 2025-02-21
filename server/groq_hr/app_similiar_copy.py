@@ -33,38 +33,47 @@ db_config = {
 # 2. Ambil Data dari MySQL & Buat Document tanpa chunking
 def get_data_from_mysql():
     connection = None
+    documents = []  # List untuk menyimpan setiap dokumen
     try:
         connection = pymysql.connect(**db_config)
         with connection.cursor() as cursor:
+            # Query Departemen
             cursor.execute("SELECT department FROM department")
             departments = cursor.fetchall()
-            
+            text_departments = "Departemen:\n" + "\n".join([row["department"] for row in departments])
+            documents.append(Document(page_content=text_departments))
+
+            # Query Sertifikat
             cursor.execute("SELECT certificate_name FROM certificate")
             certificates = cursor.fetchall()
+            text_certificates = "Sertifikat:\n" + "\n".join([row["certificate_name"] for row in certificates])
+            documents.append(Document(page_content=text_certificates))
 
-            # Gunakan nama kolom yang sesuai untuk jurusan, misalnya 'major_name'
+            # Query Jurusan
             cursor.execute("SELECT major_name FROM major")
             majors = cursor.fetchall()
+            text_majors = "Jurusan:\n" + "\n".join([row["major_name"] for row in majors])
+            documents.append(Document(page_content=text_majors))
 
+            # Query Posisi
             cursor.execute("SELECT position FROM position")
             positions = cursor.fetchall()
+            text_positions = "Posisi:\n" + "\n".join([row["position"] for row in positions])
+            documents.append(Document(page_content=text_positions))
 
+            # Query Sekolah
             cursor.execute("SELECT school_name FROM school")
             schools = cursor.fetchall()
-            
+            text_schools = "Sekolah:\n" + "\n".join([row["school_name"] for row in schools])
+            documents.append(Document(page_content=text_schools))
+
+            # Query Strata
             cursor.execute("SELECT strata FROM strata")
             stratas = cursor.fetchall()
+            text_stratas = "Strata:\n" + "\n".join([row["strata"] for row in stratas])
+            documents.append(Document(page_content=text_stratas))
 
-            text = "Data Referensi:\n\n"
-            text += "Departemen:\n" + "\n".join([row["department"] for row in departments]) + "\n\n"
-            text += "Sertifikat:\n" + "\n".join([row["certificate_name"] for row in certificates]) + "\n\n"
-            text += "Jurusan:\n" + "\n".join([row["major_name"] for row in majors]) + "\n\n"
-            text += "Posisi:\n" + "\n".join([row["position"] for row in positions]) + "\n\n"
-            text += "Strata:\n" + "\n".join([row["strata"] for row in stratas]) + "\n\n"
-            text += "Sekolah:\n" + "\n".join([row["school_name"] for row in schools])
-            
-            document = Document(page_content=text)
-            return [document]
+        return documents
 
     except Exception as e:
         print(f"Error retrieving data: {e}")
@@ -109,56 +118,64 @@ llm2 = ChatGroq(
     api_key="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",
     temperature=0
 )
+sql_query = """
+SELECT 
+    e.id, 
+    e.full_name,
+    e.status,
+    e.birth_date,
+    d.department,
+    e.location,
+    e.division,
+    p.position,
+    e.company_history,
+    e.position_history,
+    IFNULL(GROUP_CONCAT(DISTINCT c.certificate_name ORDER BY c.certificate_name SEPARATOR ', '), 'Tidak Ada') AS certificates,
+    IFNULL(GROUP_CONCAT(DISTINCT CONCAT(str.strata, ' di ', s.school_name, ' Jurusan ', m.major_name) ORDER BY str.strata SEPARATOR ' | '), 'Tidak Ada') AS education_details
+FROM employee e 
+LEFT JOIN department d ON e.department = d.id 
+LEFT JOIN position p ON p.id = e.position
+LEFT JOIN employee_education ep ON ep.employee_id = e.id
+LEFT JOIN major m ON ep.major_id = m.id
+LEFT JOIN school s ON ep.school_id = s.id
+LEFT JOIN strata str ON ep.strata = str.id
+LEFT JOIN employee_certificate ec ON e.id = ec.employee_id
+LEFT JOIN certificate c ON ec.certificate_id = c.id
+"""
 
 # 5. Template Prompt
 sql_query_template = """
 Instruksi: 
-Anda adalah sql query expert. Anda harus membuat query berdasarkan pertanyaan user. Berikut data yang dapat Anda gunakan:
+Anda adalah SQL Query Expert. Tugas Anda adalah membuat bagian **WHERE, GROUP BY, dan LIMIT** berdasarkan pertanyaan user. Berikut adalah data yang dapat Anda gunakan:
 {context}
 
-Note:
-1. Anda harus membuat SQL query untuk mencari data karyawan dan mencari sesuai data (minimal harus ada 1 filter "WHERE").
-2. Apabila tidak ada data yang mendekati, carilah yang paling relevan.
-3. Jika tidak ada permintaan jumlah gunakan LIMIT 25
-4. Tugas Anda hanyalah menyesuaikan WHERE pada contoh dibawah (HANYA UBAH "WHERE" SAJA)
+**Catatan Penting:**
+1. Jika user **tidak menyebut jumlah** kandidat, gunakan `LIMIT 25` secara default.
+2. Tugas Anda hanya **Generate WHERE, GROUP BY, dan LIMIT** sesuai contoh di bawah (GROUP BY selalu GROUP BY e.id).
+3. **Perhatikan konteks data sebelum menentukan WHERE**:
+   - `CMD, OPS, HCCA, FAD, FLEET` adalah **division** (gunakan `e.division`).
+   - **JANGAN SALAH** antara department, division, position, certificate, school, strata, dan major.
+   - **Gunakan alias yang benar** untuk tabel:
+     - `d.department` untuk department
+     - `p.position` untuk position
+     - `m.major` untuk major
+     - `s.school` untuk school
+     - `str.strata` untuk strata
+     - `c.certificate` untuk certificate
 
-Contoh:
-Input: berikan 10 Manajer IT di divisi OPS pendidikan D3
-Output: sql'''
-            SELECT 
-            e.id, 
-            e.full_name,
-            e.status,
-            e.birth_date,
-            d.department,
-            e.location,
-            e.division,
-            p.position,
-            e.company_history,
-            e.position_history,
-            IFNULL(GROUP_CONCAT(DISTINCT c.certificate_name ORDER BY c.certificate_name SEPARATOR ', '), 'Tidak Ada') AS certificates,
-            IFNULL(GROUP_CONCAT(DISTINCT CONCAT(str.strata, ' di ', s.school_name, ' Jurusan ', m.major_name) ORDER BY str.strata SEPARATOR ' | '), 'Tidak Ada') AS education_details
-        FROM employee e 
-        LEFT JOIN department d ON e.department = d.id 
-        LEFT JOIN position p ON p.id = e.position
-        LEFT JOIN employee_education ep ON ep.employee_id = e.id
-        LEFT JOIN major m ON ep.major_id = m.id
-        LEFT JOIN school s ON ep.school_id = s.id
-        LEFT JOIN strata str ON ep.strata = str.id
-        LEFT JOIN employee_certificate ec ON e.id = ec.employee_id
-        LEFT JOIN certificate c ON ec.certificate_id = c.id
+**Contoh:**
+- **Input:** "berikan 10 Manajer IT di divisi OPS pendidikan D3"
+- **Output SQL (hanya ganti WHERE, GROUP BY, LIMIT, tanpa SELECT dan JOIN):**
+sql'''
         WHERE p.position LIKE "%Manager%" 
         AND d.department LIKE "%IT%" 
         AND e.division = "OPS"
+        AND str.strata = "D3"
         GROUP BY e.id
         LIMIT 10;
-        '''
-Penjelasan: "Manajer" diubah menjadi "%Manager%" karena terdapat banyak varian, begitu pula untuk IT. Division dicocokkan dengan "=" karena data bersifat eksak.
-Jawaban (Hanya berupa SQL query):
-Perintah:
-{question}
+'''
+BUATKAN OUTPUT UNTUK: {question}
 """
-
 template_suggestion = """
 **Instruksi:**
 Anda adalah sistem rekomendasi kalimat perintah yang bertugas membuat 3 perintah serupa berdasarkan perintah berikut:
@@ -178,18 +195,19 @@ Anda adalah sistem rekomendasi kalimat perintah yang bertugas membuat 3 perintah
 
 template_filter = """
 **Instruksi:**
-Anda adalah Human Resource Expert. Tugas Anda:
-1. Filter array kandidat BERDASARKAN input user: {{ user_query }}
-2. Hapus kandidat yang TIDAK MEMENUHI kriteria input.
-3. Update field 'alasan' dengan penjelasan singkat (contoh: "Sesuai kriteria IT Department dan Manager").
-4. Output HANYA berupa JSON array yang valid, tanpa komentar/markdown.
+Anda adalah Human Resource Expert. Tugas Anda mengecek bagian DEPARTMENT:
+1. Filter array kandidat BERDASARKAN input user: {{ user_query }}.
+2. Hapus kandidat yang TIDAK MEMENUHI kriteria **department HANYA JIKA** department disebut dalam input user.
+3. Jika input user **tidak menyebutkan department**, **jangan hapus kandidat** berdasarkan department.
+4. Update field 'alasan' dengan penjelasan singkat berdasarkan kecocokan kandidat dengan kriteria (contoh: "Sesuai kriteria Manager dan OPS").
+5. Output HANYA berupa JSON array yang valid, tanpa komentar atau markdown.
 
 **Contoh Output:**
 [
     {
         "id": 123,
         ...,
-        "alasan": "Sesuai kriteria IT Department"
+        "alasan": "Sesuai kriteria Manager dan OPS"
     }
 ]
 
@@ -329,10 +347,12 @@ def search_candidates():
         print("Candidates sql:", candidates)
         
         cleaned_queries = regex_clean_candidate_sql(candidates)
-        
+        clean1 = cleaned_queries[0]
+        final_query = f"{sql_query}{clean1}"
+        print(final_query)
         executed_result = None
         if cleaned_queries:
-            executed_result = execute_sql_query(cleaned_queries[0])
+            executed_result = execute_sql_query(final_query)
         
         # Tambahkan field 'alasan' pada setiap record (menggunakan think_text sebagai contoh)
         if executed_result and isinstance(executed_result, list):
