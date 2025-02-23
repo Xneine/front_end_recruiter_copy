@@ -10,9 +10,9 @@ interface ChatMessage {
   finalText?: string;
   typedContent?: string;
   cardData?: Candidate[];
+  keywordData?: Array<Record<string, string>>;
 }
 
-// Komponen animasi "Thinking" dengan teks dan dot animasi yang menggunakan gradasi biru ke hijau
 function MajesticTypingAnimation({ baseText }: { baseText: string }) {
   return (
     <span className="flex items-center">
@@ -51,12 +51,10 @@ export function Chat() {
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Scroll ke pesan terakhir
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Auto-resize textarea
   useEffect(() => {
     if (textAreaRef.current) {
       textAreaRef.current.style.height = "auto";
@@ -64,7 +62,6 @@ export function Chat() {
     }
   }, [inputValue]);
 
-  // Animasi teks untuk pesan assistant (jika ada animasi)
   useEffect(() => {
     const msgToAnimate = messages.find(
       (m) =>
@@ -92,14 +89,13 @@ export function Chat() {
     return () => clearInterval(timer);
   }, [messages]);
 
-  // Setelah animasi selesai, update pesan assistant agar tidak lagi menampilkan animasi
   useEffect(() => {
     const finishedMsgs = messages.filter(
       (m) =>
         m.role === "assistant" &&
         m.finalText &&
         m.typedContent === m.finalText &&
-        !m.content // pesan ini masih berupa pesan animasi
+        !m.content
     );
     if (finishedMsgs.length > 0) {
       const latestFinishedMsg = finishedMsgs[finishedMsgs.length - 1];
@@ -112,6 +108,7 @@ export function Chat() {
                 content: `Found ${latestFinishedMsg.cardData?.length || 0} candidate(s).`,
                 finalText: undefined,
                 typedContent: undefined,
+                keywordData: latestFinishedMsg.keywordData,
               }
             : msg
         )
@@ -119,13 +116,10 @@ export function Chat() {
     }
   }, [messages]);
 
-  // Fungsi untuk mengirim query ke back-end
   const sendQuery = async (query: string) => {
-    // Bersihkan state kandidat dan suggestion sebelum query baru
     setCards([]);
     setSuggestions([]);
 
-    // Tambah pesan user
     const userMessage: ChatMessage = {
       id: Date.now(),
       role: "user",
@@ -133,11 +127,10 @@ export function Chat() {
     };
     setMessages((prev) => [...prev, userMessage]);
 
-    // Tambah pesan temporary untuk assistant dengan animasi megah
     const tempAssistantMessage: ChatMessage = {
       id: Date.now() + 1,
       role: "assistant",
-      content: "Thinking", // tanpa "..." agar animasi dot lebih menonjol
+      content: "Thinking",
       isTyping: true,
       temporary: true,
     };
@@ -154,13 +147,11 @@ export function Chat() {
       const thinkingText = data.think || "";
       const candidates: Candidate[] = data.answer || [];
       const suggestionsData: string[] = data.suggestion || [];
+      const keywordData: Array<Record<string, string>> = data.keyword || [];
 
       setSuggestions(suggestionsData);
-      console.log("Candidates:", candidates);
-
       const cleanThinkingText = thinkingText.replace(/<\/?think>/gi, "").trim();
 
-      // Hapus pesan temporary "Thinking" dan tambahkan pesan final dari assistant
       setMessages((prev) => {
         const filtered = prev.filter((m) => !m.isTyping);
         if (cleanThinkingText) {
@@ -172,6 +163,7 @@ export function Chat() {
               finalText: cleanThinkingText,
               typedContent: "",
               cardData: candidates,
+              keywordData: keywordData,
             },
           ];
         } else {
@@ -182,6 +174,7 @@ export function Chat() {
               role: "assistant",
               content: `Found ${candidates.length} candidate(s).`,
               cardData: candidates,
+              keywordData: keywordData,
             },
           ];
         }
@@ -202,7 +195,6 @@ export function Chat() {
     }
   };
 
-  // Handler untuk submit form
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim()) return;
@@ -210,7 +202,6 @@ export function Chat() {
     setInputValue("");
   };
 
-  // Handler untuk klik suggestion
   const handleSuggestionClick = async (suggestion: string) => {
     await sendQuery(suggestion);
   };
@@ -225,24 +216,14 @@ export function Chat() {
 
   return (
     <>
-      {/* Sisipkan keyframes animasi secara inline */}
       <style>{`
         @keyframes majesticBounce {
-          0%, 100% {
-            transform: translateY(0) scale(1);
-            opacity: 1;
-          }
-          50% {
-            transform: translateY(-12px) scale(1.3);
-            opacity: 0.75;
-          }
+          0%, 100% { transform: translateY(0) scale(1); opacity: 1; }
+          50% { transform: translateY(-12px) scale(1.3); opacity: 0.75; }
         }
-        .animate-majesticBounce {
-          animation: majesticBounce 1.5s infinite;
-        }
+        .animate-majesticBounce { animation: majesticBounce 1.5s infinite; }
       `}</style>
       <div className="flex h-full">
-        {/* Bagian Chat */}
         <div className="w-1/3 flex flex-col">
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages
@@ -292,12 +273,30 @@ export function Chat() {
                       <div className="text-base whitespace-pre-wrap leading-relaxed">
                         {displayText}
                       </div>
+                      {msg.keywordData && msg.keywordData.length > 0 && (
+                        <div className="mt-3">
+                          <div className="text-sm font-semibold text-gray-600 mb-1">
+                            Keywords:
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {msg.keywordData.map((keywordObj, index) =>
+                              Object.entries(keywordObj).map(([key, value]) => (
+                                <div
+                                  key={`${index}-${key}`}
+                                  className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                                >
+                                  {key}: <span className="font-medium">{value}</span>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
               })}
 
-            {/* Bagian Suggestions */}
             {showSuggestions && (
               <div className="mt-4">
                 <div className="text-sm font-bold mb-2">Suggestions:</div>
@@ -352,7 +351,6 @@ export function Chat() {
           </div>
         </div>
 
-        {/* Bagian Card */}
         <div className="w-2/3 border-l border-gray-200 overflow-y-auto p-4">
           {cards.length > 0 ? (
             cards.map((candidate) => (

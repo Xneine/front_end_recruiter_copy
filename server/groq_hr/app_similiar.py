@@ -1,3 +1,4 @@
+# Yang ini SELECT nya masih ALL
 from flask import Flask, request, jsonify
 import json
 from datetime import datetime

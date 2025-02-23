@@ -1,3 +1,4 @@
+# Yang ini SELECT nya DIPISAH
 from flask import Flask, request, jsonify
 import json
 from datetime import datetime
@@ -165,17 +166,16 @@ Anda adalah SQL Query Expert. Tugas Anda adalah membuat bagian **WHERE, GROUP BY
 
 **Contoh:**
 - **Input:** "berikan 10 Manajer IT di divisi OPS pendidikan Informatika S3 dengan sertifikat Six Sigma black Belt"
-- **Output SQL (hanya ganti WHERE, GROUP BY, LIMIT, tanpa SELECT dan JOIN):**
-sql'''
-        WHERE p.position LIKE "%Manager%" 
-        AND d.department LIKE "%IT%" 
-        AND e.division = "OPS"
-        AND str.strata = "S3"
-        AND m.major_name LIKE "%Informatika%"
-        AND c.certificate = "Six Sigma black Belt" 
-        GROUP BY e.id
-        LIMIT 10;
-'''
+- **Output SQL (hanya ganti WHERE, GROUP BY, LIMIT, tanpa SELECT dan JOIN, JANGAN TAMBAHKAN FORMAT TAMBAHAN DILUAR QUERY SQL):**
+WHERE p.position LIKE "%Manager%" 
+AND d.department LIKE "%IT%" 
+AND e.division = "OPS"
+AND str.strata = "S3"
+AND m.major_name LIKE "%Informatika%"
+AND c.certificate = "Six Sigma black Belt" 
+GROUP BY e.id
+LIMIT 10;
+
 BUATKAN OUTPUT UNTUK: {question}
 """
 template_suggestion = """
@@ -250,40 +250,6 @@ def regex_think_and_sql(result_text):
         sql_query = result_text.strip()
     return think_text, sql_query
 
-def regex_clean_candidate_sql(candidate_text):
-    """
-    Membersihkan candidate_text dengan menghapus markdown code fences, 
-    mengekstrak query dari SELECT sampai LIMIT, dan menghapus duplikasi.
-    Mengembalikan list JSON berisi query SQL yang telah dibersihkan.
-    """
-    import re
-    candidate_text = re.sub(r"```sql", "", candidate_text, flags=re.IGNORECASE)
-    candidate_text = re.sub(r"```", "", candidate_text)
-    candidate_text = candidate_text.strip()
-    
-    match = re.search(r"(SELECT.*?LIMIT\s+\d+;)", candidate_text, flags=re.DOTALL | re.IGNORECASE)
-    if match:
-        query = match.group(1)
-    else:
-        query = candidate_text
-
-    query = re.sub(r"(FROM\s+employee\s+e)(\s+FROM\s+employee\s+e)+", r"\1", query, flags=re.IGNORECASE)
-    query = re.sub(
-        r"(LEFT\s+JOIN\s+department\s+d\s+ON\s+e\.department\s*=\s*d\.id)(\s+LEFT\s+JOIN\s+department\s+d\s+ON\s+e\.department\s*=\s*d\.id)+",
-        r"\1", query, flags=re.IGNORECASE
-    )
-    
-    lines = query.splitlines()
-    seen = set()
-    clean_lines = []
-    for line in lines:
-        stripped = line.strip()
-        if stripped and stripped not in seen:
-            seen.add(stripped)
-            clean_lines.append(line)
-    cleaned_query = "\n".join(clean_lines)
-    return [cleaned_query]
-
 def regex_sugestion(data):
     if isinstance(data, str):
         try:
@@ -311,6 +277,23 @@ def execute_sql_query(query):
     finally:
         if connection is not None:
             connection.close()
+
+def extract_conditions(query):
+    where_clause_match = re.search(r'WHERE(.*?)GROUP BY', query, re.DOTALL | re.IGNORECASE)
+    if not where_clause_match:
+        return []
+    
+    where_clause = where_clause_match.group(1)
+    conditions = re.findall(r'([a-zA-Z_\.]+)\s*(LIKE|=)\s*"(.*?)"', where_clause)
+    
+    result = {}
+    for column, operator, value in conditions:
+        key = column.split('.')[-1]  # Ambil hanya nama kolom
+        if operator.upper() == 'LIKE':
+            value = value.replace('%', '')  # Hilangkan % jika ada
+        result[key] = value
+    
+    return [result]
 
 @app.route('/search', methods=['POST'])
 def search_candidates():
@@ -348,12 +331,10 @@ def search_candidates():
         print("Think:", think_text)
         print("Candidates sql:", candidates)
         
-        cleaned_queries = regex_clean_candidate_sql(candidates)
-        clean1 = cleaned_queries[0]
-        final_query = f"{sql_query}{clean1}"
+        final_query = f"{sql_query}{candidates}"
         print(final_query)
         executed_result = None
-        if cleaned_queries:
+        if candidates:
             executed_result = execute_sql_query(final_query)
         
         # Tambahkan field 'alasan' pada setiap record (menggunakan think_text sebagai contoh)
@@ -386,6 +367,7 @@ def search_candidates():
             filtered_data = []  # Atau return error ke client
         response_payload = {
             "suggestion": regex_sugestion(response2["result"]),
+            "keyword" : extract_conditions(candidates),
             "think": think_text,
             "answer": filtered_data,
             "sources": [
@@ -394,6 +376,9 @@ def search_candidates():
             ]
         }
         print("Cleaned Query Array:", response_payload['answer'])
+        print("keyword: ", response_payload['keyword'])
+        print("IS LIST: ", isinstance(response_payload['keyword'],list))
+        # print(isinstance(json.loads(response_payload['keyword']), list))
         
         return jsonify(response_payload)
     
