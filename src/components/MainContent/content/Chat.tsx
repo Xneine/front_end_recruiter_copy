@@ -274,21 +274,26 @@ export function Chat() {
                         {displayText}
                       </div>
                       {msg.keywordData && msg.keywordData.length > 0 && (
-                        <div className="mt-3">
-                          <div className="text-sm font-semibold text-gray-600 mb-1">
-                            Keywords:
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {msg.keywordData.map((keywordObj, index) =>
-                              Object.entries(keywordObj).map(([key, value]) => (
-                                <div
-                                  key={`${index}-${key}`}
-                                  className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-                                >
-                                  {key}: <span className="font-medium">{value}</span>
-                                </div>
-                              ))
-                            )}
+                        <div>
+                          {/* Garis horizontal menggunakan border */}
+                          <div className="my-3 w-full border-b border-gray-300" />
+
+                          <div className="mt-3">
+                            <div className="text-sm font-semibold text-gray-600 mb-1">
+                              Keywords:
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {msg.keywordData.map((keywordObj, index) =>
+                                Object.entries(keywordObj).map(([key, value]) => (
+                                  <div
+                                    key={`${index}-${key}`}
+                                    className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                                  >
+                                    {key}: <span className="font-medium">{value}</span>
+                                  </div>
+                                ))
+                              )}
+                            </div>
                           </div>
                         </div>
                       )}
