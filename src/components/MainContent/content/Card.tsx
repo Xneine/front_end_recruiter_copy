@@ -18,7 +18,7 @@ export interface Candidate {
 
 export function Card({ data }: { data: Candidate }) {
   return (
-    <div className="w-full border border-gray-200 bg-white p-4 shadow-sm mb-4">
+    <div className="w-full border rounded-2xl border-gray-200 bg-white p-4 shadow-sm mb-4">
       {/* Header Profil */}
       <div className="flex items-start">
         <img

@@ -147,7 +147,7 @@ LEFT JOIN certificate c ON ec.certificate_id = c.id
 # 5. Template Prompt
 sql_query_template = """
 Instruksi: 
-Anda adalah SQL Query Expert. Tugas Anda adalah membuat bagian **WHERE, GROUP BY, dan LIMIT** berdasarkan pertanyaan user. Berikut adalah data yang dapat Anda gunakan:
+Anda adalah SQL Query Expert. Tugas Anda adalah membuat bagian **WHERE, GROUP BY, dan LIMIT** berdasarkan pertanyaan user. Berikut adalah data yang dapat Anda gunakan (PENTING: Gunakan data tersebut untuk menentukan apakah WHERE menggunakan = atau LIKE DAN untuk membedakan mana yang department, division, position, certificate, school, strata, dan major):
 {context}
 
 **Catatan Penting:**
@@ -156,7 +156,7 @@ Anda adalah SQL Query Expert. Tugas Anda adalah membuat bagian **WHERE, GROUP BY
 3. **Perhatikan konteks data sebelum menentukan WHERE**:
    - `CMD, OPS, HCCA, FAD, FLEET` adalah **division** (gunakan `e.division`).
    - `aktif, non-aktif` adalah **status** (gunakan `e.status`).
-   - **JANGAN SALAH** antara department, division, position, certificate, school, strata, dan major.
+   - **JANGAN SALAH** antara department, division, position, certificate, school, strata, dan major. 
    - **Gunakan alias yang benar** untuk tabel:
      - `e.employee` untuk employee, list kolom: `full_name`, `birth_date`, `position_history`, `division`, `status`
      - `d.department` untuk department, list kolom: `department`
@@ -165,6 +165,7 @@ Anda adalah SQL Query Expert. Tugas Anda adalah membuat bagian **WHERE, GROUP BY
      - `s.school` untuk school, list kolom: `school_name`
      - `str.strata` untuk strata, list kolom: `strata`
      - `c.certificate` untuk certificate, list kolom: `certificate_name`
+4. e.status adalah "aktif" secara default
 
 **Contoh:**
 - **Input:** "berikan 10 Manajer IT di divisi OPS pendidikan Informatika S3 dengan sertifikat Six Sigma black Belt"
@@ -175,6 +176,7 @@ AND e.division = "OPS"
 AND str.strata = "S3"
 AND m.major_name LIKE "%Informatika%"
 AND c.certificate = "Six Sigma black Belt" 
+AND e.status = "aktif"
 GROUP BY e.id
 LIMIT 10;
 
