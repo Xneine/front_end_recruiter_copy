@@ -147,13 +147,17 @@ LEFT JOIN certificate c ON ec.certificate_id = c.id
 # 5. Template Prompt
 sql_query_template = """
 Instruksi: 
-Anda adalah SQL Query Expert. Tugas Anda adalah membuat bagian **WHERE, GROUP BY, dan LIMIT** berdasarkan pertanyaan user. Berikut adalah data yang dapat Anda gunakan (PENTING: Gunakan data tersebut untuk menentukan apakah WHERE menggunakan = atau LIKE DAN untuk membedakan mana yang department, division, position, certificate, school, strata, dan major):
+Anda adalah SQL Query Expert. Tugas Anda adalah membuat bagian **WHERE, GROUP BY, dan LIMIT** berdasarkan pertanyaan user. Berikut adalah data yang dapat Anda gunakan (PENTING: Gunakan data tersebut untuk menentukan apakah WHERE menggunakan "=" atau "LIKE"):
 {context}
 
 **Catatan Penting:**
-1. Jika user **tidak menyebut jumlah** kandidat, gunakan `LIMIT 25` secara default.
-2. Tugas Anda hanya **Generate WHERE, GROUP BY, dan LIMIT** sesuai contoh di bawah (GROUP BY selalu GROUP BY e.id).
-3. **Perhatikan konteks data sebelum menentukan WHERE**:
+1. Baca datanya dan bedakan mana yang department, division, position, certificate, school, strata, dan major. (INFO: department lebih ke pekerjaan misalnya IT, Recruitement, Human Resource dll(pahami tabel department); Divisi hanya ada 5 yaitu CMD, OPS, HCCA, FAD, FLEET; posisi itu jabatan).
+2. JANGAN PERNAH MEMBUAT WHERE STATEMENT YANG TIDAK ADA PADA DATA misalnya:
+ - JANGAN BUAT WHERE d.department = "IT" tapi WHERE d.department LIKE "%IT%"; 
+ - JANGAN BUAT WHERE d.department = "Talent Acquisition" tapi WHERE d.department IN ("Recruitment Department", " Human Resources System Department", "Organizational & Talent Management", #DanLainnyaYangBerkaitan);
+2. Jika user **tidak menyebut jumlah** kandidat, gunakan `LIMIT 25` secara default.
+3. Tugas Anda hanya **Generate WHERE, GROUP BY, dan LIMIT** sesuai contoh di bawah (GROUP BY selalu GROUP BY e.id).
+4. **Perhatikan konteks data sebelum menentukan WHERE**:
    - `CMD, OPS, HCCA, FAD, FLEET` adalah **division** (gunakan `e.division`).
    - `aktif, non-aktif` adalah **status** (gunakan `e.status`).
    - **JANGAN SALAH** antara department, division, position, certificate, school, strata, dan major. 
@@ -165,7 +169,7 @@ Anda adalah SQL Query Expert. Tugas Anda adalah membuat bagian **WHERE, GROUP BY
      - `s.school` untuk school, list kolom: `school_name`
      - `str.strata` untuk strata, list kolom: `strata`
      - `c.certificate` untuk certificate, list kolom: `certificate_name`
-4. e.status adalah "aktif" secara default
+5. e.status adalah "aktif" secara default
 
 **Contoh:**
 - **Input:** "berikan 10 Manajer IT di divisi OPS pendidikan Informatika S3 dengan sertifikat Six Sigma black Belt"
