@@ -37,12 +37,12 @@ function MajesticTypingAnimation({ baseText }: { baseText: string }) {
   );
 }
 
-export function Chat() {
+export function InformationChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: Date.now(),
       role: "assistant",
-      content: "Hi, this is Candidate Chat. How can I help you today?",
+      content: "Hi, this is Information Chat. How can I help you today?",
     },
   ]);
   const [inputValue, setInputValue] = useState("");

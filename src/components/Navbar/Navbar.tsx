@@ -1,6 +1,12 @@
 import { Link, useNavigate } from "react-router-dom";
+import { ToggleButton } from "./content/ToggleButton";
 
-export function Navbar() {
+interface NavbarProps {
+  isCandidateSearch: boolean;
+  onToggle: () => void;
+}
+
+export function Navbar({ isCandidateSearch, onToggle }: NavbarProps) {
   const menus = ["Chat", "Cart"];
   const navigate = useNavigate();
 
@@ -10,7 +16,7 @@ export function Navbar() {
 
   return (
     <nav className="bg-white text-black p-4 flex justify-between items-center h-20 shadow-md">
-      {/* Logo & Menu Navigation (Dikelompokkan Bersama) */}
+      {/* Logo & Menu Navigation */}
       <div className="flex items-center space-x-6">
         <img src="/assets/logo.png" className="h-8" alt="Logo" />
         <ul className="flex space-x-6 text-lg font-medium">
@@ -25,6 +31,7 @@ export function Navbar() {
             </li>
           ))}
         </ul>
+        <ToggleButton isCandidateSearch={isCandidateSearch} onToggle={onToggle} />
       </div>
 
       {/* Logout Button */}
