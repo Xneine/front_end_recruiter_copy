@@ -198,7 +198,6 @@ Anda adalah sistem rekomendasi kalimat perintah yang bertugas membuat 3 perintah
 **Format Jawaban (Gunakan format JSON array, tidak perlu tambahan lain):**
 ["perintah1", "perintah2", "perintah3"]
 """
-
 template_filter = """
 **Instruksi:**
 Anda adalah AI sebagai filter tahap akhir sebelum memilih kandidat. Tugas Anda adalah mengecek kecocokan user_query dengan kandidat:
@@ -222,6 +221,21 @@ Anda adalah AI sebagai filter tahap akhir sebelum memilih kandidat. Tugas Anda a
 
 Jawaban (HANYA JSON array):
 """
+template_info = """
+**Instruksi:**
+Anda adalah AI chatbot yang bertugas menjawab pertanyaan dari user mengenai kualitas dan kualifikasi kandidat:
+1. Jawablah pertanyaan dengan sopan dan jelas.
+2. Apabila pertanyaan tidak ada di data, jawablah pertanyaan tersebut dengan "Tidak Ada" dan berikan penjelasan singkat mengenai pertanyaan tersebut.
+3. Anda bebas memberikan emoji dalam menjawab Namun FORMAT JAWABAN TETAP DALAM BENTUK TEXT.
+**Contoh Pertanyaan/Perintah:**
+1. Berikan list department yang relate dengan IT!
+2. Berikan list semua divisi yang ada!
+3. Apa saja certificate yang terdaftar?
+4. Department apa saja yang berhubungan dengan Talent Acquisition atau Requirement?
+5. Apa saja position yang ada?
+data: {context}
+pertanyaan: {question}
+"""
 
 prompt = PromptTemplate(
     template=sql_query_template,
@@ -235,6 +249,10 @@ promptFilter = PromptTemplate(
     template=template_filter,
     input_variables=["user_query", "executed_result"],
     template_format="jinja2"
+)
+promptInformation = PromptTemplate(
+    template=template_info,
+    input_variables=["context", "question"],
 )
 def regex_think_and_sql(result_text):
     """
@@ -305,87 +323,106 @@ def search_candidates():
         data = request.get_json()
         user_query = data.get('query', '')
         if not user_query:
-            return jsonify({"error": "Query tidak boleh kosong"}), 400
+            return jsonify({"error": "Query tidak boleh kosong"}), 400    
+        if data.get('type') == 'candidate':
+            print("User Query Candidate:", user_query)
+            retriever = db.as_retriever(search_kwargs={"k": 50})
+            qa_chain = RetrievalQA.from_chain_type(
+                llm=llm,
+                chain_type="stuff",
+                retriever=retriever,
+                chain_type_kwargs={"prompt": prompt},
+                return_source_documents=True
+            )
+            qa_chain2 = RetrievalQA.from_chain_type(
+                llm=llm2,
+                chain_type="stuff",
+                retriever=retriever,
+                chain_type_kwargs={"prompt": prompt2},
+                return_source_documents=True
+            )
+            
+            current_date = datetime.now().strftime("%d %B %Y")
+            case_information = f"{user_query} (Untuk sekedar informasi, tanggal saat ini adalah {current_date})"
+                    
+            response2 = qa_chain2.invoke({"query": case_information})
+            print("LLM 2 Response:", response2["result"])
+            
+            result = qa_chain.invoke({"query": case_information})
+            think_text, candidates = regex_think_and_sql(result["result"])
+            print("Think:", think_text)
+            print("Candidates sql:", candidates)
+            
+            final_query = f"{sql_query}{candidates}"
+            print(final_query)
+            executed_result = None
+            if candidates:
+                executed_result = execute_sql_query(final_query)
+            
+            # Tambahkan field 'alasan' pada setiap record (menggunakan think_text sebagai contoh)
+            if executed_result and isinstance(executed_result, list):
+                for row in executed_result:
+                    row['alasan'] = "Field alasan"
+            print(executed_result)
+            # Buat prompt kustom dengan menyematkan informasi yang sudah ada
+            qa_chain3 = LLMChain(
+                llm=llm2,
+                prompt=promptFilter
+            )
+            executed_result_str = json.dumps(executed_result, default=str)
+            try:
+                response3 = qa_chain3.invoke({
+                    "user_query": user_query,
+                    "executed_result": executed_result_str
+                })
+                print("Response3 Raw:", response3)  # Debug log
+                print("response3['text']:", response3['text'])
+            except Exception as e:
+                print(f"Error in qa_chain3: {str(e)}")
+                return jsonify({"error": "Gagal memproses filter kandidat"}), 500
+            try:
+                # Bersihkan teks tambahan di luar JSON
+                json_str = re.search(r'\[.*\]', response3['text'], flags=re.DOTALL).group()
+                filtered_data = json.loads(json_str)
+            except (json.JSONDecodeError, AttributeError) as e:
+                print(f"Error parsing JSON: {e}")
+                filtered_data = []  # Atau return error ke client
+            response_payload = {
+                "suggestion": regex_sugestion(response2["result"]),
+                "keyword" : extract_conditions(candidates),
+                "think": think_text,
+                "answer": filtered_data,
+                "sources": [
+                    {"content": doc.page_content, "metadata": doc.metadata}
+                    for doc in result["source_documents"]
+                ]
+            }
+            print("Cleaned Query Array:", response_payload['answer'])
+            print("keyword: ", response_payload['keyword'])
+            print("IS LIST: ", isinstance(response_payload['keyword'],list))
+            # print(isinstance(json.loads(response_payload['keyword']), list))
+            
+            return jsonify(response_payload)
         
-        print("User Query:", user_query)
-        retriever = db.as_retriever(search_kwargs={"k": 50})
-        qa_chain = RetrievalQA.from_chain_type(
-            llm=llm,
-            chain_type="stuff",
-            retriever=retriever,
-            chain_type_kwargs={"prompt": prompt},
-            return_source_documents=True
-        )
-        qa_chain2 = RetrievalQA.from_chain_type(
-            llm=llm2,
-            chain_type="stuff",
-            retriever=retriever,
-            chain_type_kwargs={"prompt": prompt2},
-            return_source_documents=True
-        )
-        
-        current_date = datetime.now().strftime("%d %B %Y")
-        case_information = f"{user_query} (Untuk sekedar informasi, tanggal saat ini adalah {current_date})"
-                
-        response2 = qa_chain2.invoke({"query": case_information})
-        print("LLM 2 Response:", response2["result"])
-        
-        result = qa_chain.invoke({"query": case_information})
-        think_text, candidates = regex_think_and_sql(result["result"])
-        print("Think:", think_text)
-        print("Candidates sql:", candidates)
-        
-        final_query = f"{sql_query}{candidates}"
-        print(final_query)
-        executed_result = None
-        if candidates:
-            executed_result = execute_sql_query(final_query)
-        
-        # Tambahkan field 'alasan' pada setiap record (menggunakan think_text sebagai contoh)
-        if executed_result and isinstance(executed_result, list):
-            for row in executed_result:
-                row['alasan'] = "Field alasan"
-        print(executed_result)
-        # Buat prompt kustom dengan menyematkan informasi yang sudah ada
-        qa_chain3 = LLMChain(
-            llm=llm2,
-            prompt=promptFilter
-        )
-        executed_result_str = json.dumps(executed_result, default=str)
-        try:
-            response3 = qa_chain3.invoke({
-                "user_query": user_query,
-                "executed_result": executed_result_str
-            })
-            print("Response3 Raw:", response3)  # Debug log
-            print("response3['text']:", response3['text'])
-        except Exception as e:
-            print(f"Error in qa_chain3: {str(e)}")
-            return jsonify({"error": "Gagal memproses filter kandidat"}), 500
-        try:
-            # Bersihkan teks tambahan di luar JSON
-            json_str = re.search(r'\[.*\]', response3['text'], flags=re.DOTALL).group()
-            filtered_data = json.loads(json_str)
-        except (json.JSONDecodeError, AttributeError) as e:
-            print(f"Error parsing JSON: {e}")
-            filtered_data = []  # Atau return error ke client
-        response_payload = {
-            "suggestion": regex_sugestion(response2["result"]),
-            "keyword" : extract_conditions(candidates),
-            "think": think_text,
-            "answer": filtered_data,
-            "sources": [
-                {"content": doc.page_content, "metadata": doc.metadata}
-                for doc in result["source_documents"]
-            ]
-        }
-        print("Cleaned Query Array:", response_payload['answer'])
-        print("keyword: ", response_payload['keyword'])
-        print("IS LIST: ", isinstance(response_payload['keyword'],list))
-        # print(isinstance(json.loads(response_payload['keyword']), list))
-        
-        return jsonify(response_payload)
-    
+        elif data.get('type') == 'information':
+            print("User Query information:", user_query)
+            retriever = db.as_retriever(search_kwargs={"k": 50})
+            qa_chain = RetrievalQA.from_chain_type(
+                llm=llm2,
+                chain_type="stuff",
+                retriever=retriever,
+                chain_type_kwargs={"prompt": promptInformation},
+                return_source_documents=True
+            )
+            current_date = datetime.now().strftime("%d %B %Y")
+            case_information = f"{user_query} (Untuk sekedar informasi, tanggal saat ini adalah {current_date})"
+                    
+            response = qa_chain.invoke({"query": case_information})
+            print("LLM 2 Response:", response["result"])            
+            response_payload = {
+                "answer": response["result"],
+            }
+            return jsonify(response_payload)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

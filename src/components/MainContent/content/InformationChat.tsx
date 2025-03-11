@@ -44,7 +44,6 @@ export function InformationChat() {
     },
   ]);
   const [inputValue, setInputValue] = useState("");
-  const [suggestions, setSuggestions] = useState<string[]>([]);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -59,6 +58,7 @@ export function InformationChat() {
     }
   }, [inputValue]);
 
+  // Efek animasi mengetik untuk pesan assistant dengan finalText
   useEffect(() => {
     const msgToAnimate = messages.find(
       (m) =>
@@ -87,7 +87,7 @@ export function InformationChat() {
   }, [messages]);
 
   const sendQuery = async (query: string) => {
-    setSuggestions([]);
+    // Tambahkan pesan user
     const userMessage: ChatMessage = {
       id: Date.now(),
       role: "user",
@@ -95,10 +95,11 @@ export function InformationChat() {
     };
     setMessages((prev) => [...prev, userMessage]);
 
+    // Tambahkan pesan sementara (opsional, jika ingin menampilkan animasi "Thinking")
     const tempAssistantMessage: ChatMessage = {
       id: Date.now() + 1,
       role: "assistant",
-      content: "Thinking",
+      content: "",
       isTyping: true,
       temporary: true,
     };
@@ -108,37 +109,25 @@ export function InformationChat() {
       const response = await fetch("http://127.0.0.1:5025/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query, type: "information" }),
       });
       const data = await response.json();
-
-      const thinkingText = data.think || "";
-      const suggestionsData: string[] = data.suggestion || [];
-      setSuggestions(suggestionsData);
-      const cleanThinkingText = thinkingText.replace(/<\/?think>/gi, "").trim();
+      
+      // Ambil data.answer dan gunakan untuk animasi mengetik
+      const answerText = data.answer || "";
 
       setMessages((prev) => {
+        // Hapus pesan yang sedang mengetik
         const filtered = prev.filter((m) => !m.isTyping);
-        if (cleanThinkingText) {
-          return [
-            ...filtered,
-            {
-              id: Date.now(),
-              role: "assistant",
-              finalText: cleanThinkingText,
-              typedContent: "",
-            },
-          ];
-        } else {
-          return [
-            ...filtered,
-            {
-              id: Date.now(),
-              role: "assistant",
-              content: `Found answer.`,
-            },
-          ];
-        }
+        return [
+          ...filtered,
+          {
+            id: Date.now(),
+            role: "assistant",
+            finalText: answerText,
+            typedContent: "",
+          },
+        ];
       });
     } catch (error) {
       console.error("Error:", error);
@@ -162,18 +151,6 @@ export function InformationChat() {
     await sendQuery(inputValue.trim());
     setInputValue("");
   };
-
-  const handleSuggestionClick = async (suggestion: string) => {
-    await sendQuery(suggestion);
-  };
-
-  const lastAssistantMessage = messages
-    .filter((m) => m.role === "assistant" && !m.isTyping)
-    .slice(-1)[0];
-
-  const showSuggestions =
-    lastAssistantMessage?.content?.startsWith("Found") &&
-    suggestions.length > 0;
 
   return (
     <>
@@ -200,7 +177,7 @@ export function InformationChat() {
                         SPIL Assistant
                       </div>
                       <div className="text-base whitespace-pre-wrap leading-relaxed">
-                        <MajesticTypingAnimation baseText={msg.content || ""} />
+                        <MajesticTypingAnimation baseText={"Processing..."} />
                       </div>
                     </div>
                   </div>
@@ -232,56 +209,10 @@ export function InformationChat() {
                   <div className="text-base whitespace-pre-wrap leading-relaxed">
                     {displayText}
                   </div>
-                  {msg.keywordData && msg.keywordData.length > 0 && (
-                    <div>
-                      <div className="my-3 w-full border-b border-gray-300" />
-                      <div className="mt-3">
-                        <div className="text-sm font-semibold text-gray-600 mb-1">
-                          Keywords:
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {msg.keywordData.map((keywordObj, index) =>
-                            Object.entries(keywordObj).map(([key, value]) => (
-                              <div
-                                key={`${index}-${key}`}
-                                className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-                              >
-                                {key}: <span className="font-medium">{value}</span>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             );
           })}
-
-          {showSuggestions && (
-            <div className="mt-4">
-              <div className="text-sm font-bold mb-2">Suggestions:</div>
-              <div className="flex flex-col gap-2">
-                {suggestions.map((s, i) => (
-                  <button
-                    key={i}
-                    className="w-full bg-slate-300 text-blue-500 text-left px-4 py-2 border border-blue-500 rounded hover:bg-blue-100 transition"
-                    onClick={() => handleSuggestionClick(s)}
-                  >
-                    <div className="flex items-center font-medium">
-                      <img
-                        src="/assets/deepseek-color.svg"
-                        alt=""
-                        className="mr-3 w-6 h-6"
-                      />
-                      {s}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           <div ref={messagesEndRef} />
         </div>
