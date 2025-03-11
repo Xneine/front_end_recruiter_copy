@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { Card, Candidate } from "./Card";
 
 interface ChatMessage {
   id: number;
@@ -9,7 +8,6 @@ interface ChatMessage {
   isTyping?: boolean;
   finalText?: string;
   typedContent?: string;
-  cardData?: Candidate[];
   keywordData?: Array<Record<string, string>>;
 }
 
@@ -46,7 +44,6 @@ export function InformationChat() {
     },
   ]);
   const [inputValue, setInputValue] = useState("");
-  const [cards, setCards] = useState<Candidate[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -89,37 +86,8 @@ export function InformationChat() {
     return () => clearInterval(timer);
   }, [messages]);
 
-  useEffect(() => {
-    const finishedMsgs = messages.filter(
-      (m) =>
-        m.role === "assistant" &&
-        m.finalText &&
-        m.typedContent === m.finalText &&
-        !m.content
-    );
-    if (finishedMsgs.length > 0) {
-      const latestFinishedMsg = finishedMsgs[finishedMsgs.length - 1];
-      setCards(latestFinishedMsg.cardData || []);
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === latestFinishedMsg.id
-            ? {
-                ...msg,
-                content: `Found ${latestFinishedMsg.cardData?.length || 0} candidate(s).`,
-                finalText: undefined,
-                typedContent: undefined,
-                keywordData: latestFinishedMsg.keywordData,
-              }
-            : msg
-        )
-      );
-    }
-  }, [messages]);
-
   const sendQuery = async (query: string) => {
-    setCards([]);
     setSuggestions([]);
-
     const userMessage: ChatMessage = {
       id: Date.now(),
       role: "user",
@@ -145,10 +113,7 @@ export function InformationChat() {
       const data = await response.json();
 
       const thinkingText = data.think || "";
-      const candidates: Candidate[] = data.answer || [];
       const suggestionsData: string[] = data.suggestion || [];
-      const keywordData: Array<Record<string, string>> = data.keyword || [];
-
       setSuggestions(suggestionsData);
       const cleanThinkingText = thinkingText.replace(/<\/?think>/gi, "").trim();
 
@@ -162,8 +127,6 @@ export function InformationChat() {
               role: "assistant",
               finalText: cleanThinkingText,
               typedContent: "",
-              cardData: candidates,
-              keywordData: keywordData,
             },
           ];
         } else {
@@ -172,9 +135,7 @@ export function InformationChat() {
             {
               id: Date.now(),
               role: "assistant",
-              content: `Found ${candidates.length} candidate(s).`,
-              cardData: candidates,
-              keywordData: keywordData,
+              content: `Found answer.`,
             },
           ];
         }
@@ -223,147 +184,133 @@ export function InformationChat() {
         }
         .animate-majesticBounce { animation: majesticBounce 1.5s infinite; }
       `}</style>
-      <div className="flex h-full">
-        <div className="w-1/3 flex flex-col">
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages
-              .filter((m) => !m.cardData || m.finalText || m.content)
-              .map((msg) => {
-                const isAssistant = msg.role === "assistant";
-                let displayText = "";
+      <div className="flex flex-col h-full">
+        {/* Conversation area full width */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {messages.map((msg) => {
+            const isAssistant = msg.role === "assistant";
+            let displayText = "";
 
-                if (isAssistant) {
-                  if (msg.temporary) {
-                    return (
-                      <div key={msg.id} className="my-4">
-                        <div className="inline-block max-w-[85%] p-4 rounded-2xl bg-white text-gray-800 shadow-lg">
-                          <div className="text-sm font-bold mb-2">
-                            SPIL Assistant
-                          </div>
-                          <div className="text-base whitespace-pre-wrap leading-relaxed">
-                            <MajesticTypingAnimation baseText={msg.content || ""} />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  } else if (msg.finalText) {
-                    displayText = msg.typedContent || "";
-                  } else {
-                    displayText = msg.content || "";
-                  }
-                } else {
-                  displayText = msg.content || "";
-                }
-
+            if (isAssistant) {
+              if (msg.temporary) {
                 return (
-                  <div
-                    key={msg.id}
-                    className={`my-4 ${isAssistant ? "" : "flex justify-end"}`}
-                  >
-                    <div
-                      className={`inline-block max-w-[85%] p-4 rounded-2xl ${
-                        isAssistant
-                          ? "bg-white text-gray-800 shadow-lg"
-                          : "bg-blue-600 text-white shadow-md"
-                      }`}
-                    >
+                  <div key={msg.id} className="my-4">
+                    <div className="inline-block max-w-[85%] p-4 rounded-2xl bg-white text-gray-800 shadow-lg">
                       <div className="text-sm font-bold mb-2">
-                        {isAssistant ? "SPIL Assistant" : "You"}
+                        SPIL Assistant
                       </div>
                       <div className="text-base whitespace-pre-wrap leading-relaxed">
-                        {displayText}
+                        <MajesticTypingAnimation baseText={msg.content || ""} />
                       </div>
-                      {msg.keywordData && msg.keywordData.length > 0 && (
-                        <div>
-                          {/* Garis horizontal menggunakan border */}
-                          <div className="my-3 w-full border-b border-gray-300" />
-
-                          <div className="mt-3">
-                            <div className="text-sm font-semibold text-gray-600 mb-1">
-                              Keywords:
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {msg.keywordData.map((keywordObj, index) =>
-                                Object.entries(keywordObj).map(([key, value]) => (
-                                  <div
-                                    key={`${index}-${key}`}
-                                    className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-                                  >
-                                    {key}: <span className="font-medium">{value}</span>
-                                  </div>
-                                ))
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </div>
                 );
-              })}
+              } else if (msg.finalText) {
+                displayText = msg.typedContent || "";
+              } else {
+                displayText = msg.content || "";
+              }
+            } else {
+              displayText = msg.content || "";
+            }
 
-            {showSuggestions && (
-              <div className="mt-4">
-                <div className="text-sm font-bold mb-2">Suggestions:</div>
-                <div className="flex flex-col gap-2">
-                  {suggestions.map((s, i) => (
-                    <button
-                      key={i}
-                      className="w-full bg-slate-300 text-blue-500 text-left px-4 py-2 border border-blue-500 rounded hover:bg-blue-100 transition"
-                      onClick={() => handleSuggestionClick(s)}
-                    >
-                      <div className="flex items-center font-medium">
-                        <img
-                          src="/assets/deepseek-color.svg"
-                          alt=""
-                          className="mr-3 w-6 h-6"
-                        />
-                        {s}
+            return (
+              <div
+                key={msg.id}
+                className={`my-4 ${isAssistant ? "" : "flex justify-end"}`}
+              >
+                <div
+                  className={`inline-block max-w-[85%] p-4 rounded-2xl ${
+                    isAssistant
+                      ? "bg-white text-gray-800 shadow-lg"
+                      : "bg-blue-600 text-white shadow-md"
+                  }`}
+                >
+                  <div className="text-sm font-bold mb-2">
+                    {isAssistant ? "SPIL Assistant" : "You"}
+                  </div>
+                  <div className="text-base whitespace-pre-wrap leading-relaxed">
+                    {displayText}
+                  </div>
+                  {msg.keywordData && msg.keywordData.length > 0 && (
+                    <div>
+                      <div className="my-3 w-full border-b border-gray-300" />
+                      <div className="mt-3">
+                        <div className="text-sm font-semibold text-gray-600 mb-1">
+                          Keywords:
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {msg.keywordData.map((keywordObj, index) =>
+                            Object.entries(keywordObj).map(([key, value]) => (
+                              <div
+                                key={`${index}-${key}`}
+                                className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                              >
+                                {key}: <span className="font-medium">{value}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
                       </div>
-                    </button>
-                  ))}
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
+            );
+          })}
 
-            <div ref={messagesEndRef} />
-          </div>
-          <div className="border-t border-gray-200 p-4">
-            <form onSubmit={handleSubmit}>
-              <div className="flex items-center gap-2">
-                <textarea
-                  ref={textAreaRef}
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="Tulis pesan..."
-                  rows={1}
-                  className="flex-1 py-3 px-4 border rounded-2xl resize-none bg-white overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSubmit(e);
-                    }
-                  }}
-                />
-                <button
-                  type="submit"
-                  className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition"
-                >
-                  Send
-                </button>
+          {showSuggestions && (
+            <div className="mt-4">
+              <div className="text-sm font-bold mb-2">Suggestions:</div>
+              <div className="flex flex-col gap-2">
+                {suggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    className="w-full bg-slate-300 text-blue-500 text-left px-4 py-2 border border-blue-500 rounded hover:bg-blue-100 transition"
+                    onClick={() => handleSuggestionClick(s)}
+                  >
+                    <div className="flex items-center font-medium">
+                      <img
+                        src="/assets/deepseek-color.svg"
+                        alt=""
+                        className="mr-3 w-6 h-6"
+                      />
+                      {s}
+                    </div>
+                  </button>
+                ))}
               </div>
-            </form>
-          </div>
-        </div>
-
-        <div className="w-2/3 border-l border-gray-200 overflow-y-auto p-4">
-          {cards.length > 0 ? (
-            cards.map((candidate) => (
-              <Card key={candidate.id} data={candidate} />
-            ))
-          ) : (
-            <div className="text-gray-500">No cards available.</div>
+            </div>
           )}
+
+          <div ref={messagesEndRef} />
+        </div>
+        {/* Input area */}
+        <div className="border-t border-gray-200 p-4">
+          <form onSubmit={handleSubmit}>
+            <div className="flex items-center gap-2">
+              <textarea
+                ref={textAreaRef}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder="Tulis pesan..."
+                rows={1}
+                className="flex-1 py-3 px-4 border rounded-2xl resize-none bg-white overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-400"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit(e);
+                  }
+                }}
+              />
+              <button
+                type="submit"
+                className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition"
+              >
+                Send
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </>

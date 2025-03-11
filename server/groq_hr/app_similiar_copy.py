@@ -175,7 +175,7 @@ AND d.department LIKE "%IT%"
 AND e.division = "OPS"
 AND str.strata = "S3"
 AND m.major_name LIKE "%Informatika%"
-AND c.certificate = "Six Sigma black Belt" 
+AND c.certificate_name = "Six Sigma black Belt" 
 AND e.status = "aktif"
 GROUP BY e.id
 LIMIT 10;
@@ -201,12 +201,11 @@ Anda adalah sistem rekomendasi kalimat perintah yang bertugas membuat 3 perintah
 
 template_filter = """
 **Instruksi:**
-Anda adalah Human Resource Expert. Tugas Anda mengecek bagian DEPARTMENT:
-1. Filter array kandidat BERDASARKAN input user: {{ user_query }}.
-2. Hapus kandidat yang TIDAK MEMENUHI kriteria **department HANYA JIKA** department disebut dalam input user.
-3. Jika input user **tidak menyebutkan department**, **jangan hapus kandidat** berdasarkan department.
-4. Update field 'alasan' dengan penjelasan singkat berdasarkan kecocokan kandidat dengan kriteria (contoh: "Sesuai kriteria Manager dan OPS").
-5. Output HANYA berupa JSON array yang valid, tanpa komentar atau markdown.
+Anda adalah AI sebagai filter tahap akhir sebelum memilih kandidat. Tugas Anda adalah mengecek kecocokan user_query dengan kandidat:
+1. Filter array kandidat BERDASARKAN user_query.
+2. Hapus kandidat pada array_kandidat yang TIDAK MEMENUHI kriteria dari user_query (tetap hapus walaupun hanya memenuhi sebagian **JADI HANYA YANG MEMENUHI SEMUA KRITERIA PADA user_query YANG DIBUTUHKAN**).
+3. Update field 'alasan' dengan penjelasan singkat berdasarkan kecocokan kandidat dengan kriteria (contoh: "Sesuai kriteria Manager dan OPS").
+4. Output HANYA berupa JSON array yang valid, tanpa komentar atau markdown.
 
 **Contoh Output:**
 [
@@ -216,7 +215,8 @@ Anda adalah Human Resource Expert. Tugas Anda mengecek bagian DEPARTMENT:
         "alasan": "Sesuai kriteria Manager dan OPS"
     }
 ]
-
+**user_query:** 
+{{ user_query }}
 **Array Kandidat:**
 {{ executed_result }}
 
